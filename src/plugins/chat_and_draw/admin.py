@@ -102,8 +102,8 @@ def register_admin(app, get_store):
                         totals[name] += value
             return totals
         return {"runs": runs, "tasks": tasks, "roles": await asyncio.to_thread(roles),
-                "usage": await runtime.call(usage), "provider": os.getenv("LLM_PROVIDER", "openai"),
-                "model": os.getenv("VERTEX_MODEL") if os.getenv("LLM_PROVIDER") == "vertex" else os.getenv("LLM_MODEL")}
+                "usage": await runtime.call(usage), "provider": "openai-compatible",
+                "model": os.getenv("LLM_MODEL", "deepseek-chat")}
 
     @app.get("/manage/api/runs/{identity}", include_in_schema=False)
     async def run_detail(identity: str, request: Request):

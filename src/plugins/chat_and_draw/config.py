@@ -35,4 +35,4 @@ IMAGE_CACHE_DIR = project_path("IMAGE_CACHE_DIR", "data/image_cache")
 IMAGE_CACHE_TTL = positive_number("IMAGE_CACHE_TTL", 7 * 86400)
 IMAGE_CACHE_MAX_BYTES = int(positive_number("IMAGE_CACHE_MAX_BYTES", 256 * 1024 * 1024))
 # Limit image history separately from text; base64 expands requests by roughly 4/3.
-VERTEX_HISTORY_IMAGES = max(1, int(os.getenv("VERTEX_HISTORY_IMAGES", "4")))
+HISTORY_IMAGES = max(1, int(os.getenv("HISTORY_IMAGES", "4")))

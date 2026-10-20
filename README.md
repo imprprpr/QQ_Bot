@@ -1,6 +1,6 @@
 # AnimaBot · QQ 角色聊天机器人
 
-基于 **NoneBot2 + OneBot V11** 的 QQ 角色陪伴机器人，支持多角色对话、图片理解、ComfyUI 生图、GPT-SoVITS 语音和情景表情包。当前版本 **0.2.0**。
+基于 **NoneBot2 + OneBot V11** 的 QQ 角色陪伴机器人，支持多角色对话、图片理解、ComfyUI 生图、GPT-SoVITS 语音和情景表情包。当前版本 **0.2.1**。
 
 每个用户与每个角色分别保留上下文和长期信息；图片任务在后台排队，出图期间仍可聊天。项目带有仅限本机访问的管理页，可查看运行记录、任务结果与模型 token 用量。
 
@@ -11,8 +11,7 @@
 | 语言与并发 | Python 3.10+、asyncio | 异步消息处理、会话锁、后台生图队列 |
 | 机器人框架 | NoneBot2、nonebot-adapter-onebot | 接收 OneBot V11 事件、回复 QQ 消息 |
 | Web 服务 | FastAPI、Uvicorn | OneBot 接入、本机管理 API 和网页 |
-| 聊天与图片理解 | Vertex AI / Gemini、google-auth | 通过 ADC 认证，使用原生多模态 REST 接口 |
-| 兼容模型后端 | OpenAI Python SDK | 可选 OpenAI 兼容聊天服务与独立视觉服务 |
+| 聊天与图片理解 | OpenAI Python SDK、OpenAI 兼容 API | 填写 API Key、Base URL、模型 ID；可共用多模态 API 或配置独立视觉服务 |
 | 图片生成 | ComfyUI HTTP API | 提交 API 工作流、轮询任务、下载生成图片 |
 | 语音合成 | GPT-SoVITS HTTP API | 根据角色回复生成语音，失败时回退文字 |
 | 持久化 | SQLite（Python sqlite3） | 用户/角色状态、消息档案、运行阶段与生图任务 |
@@ -29,7 +28,7 @@
 - **角色卡**：支持 JSON 与含角色元数据的 PNG，兼容部分 Tavern V2 字段和关键词世界书。
 - **角色独立记忆**：按机器人、私聊/群聊、群号、用户及角色隔离，切换角色后恢复原记录。
 - **显式长期信息**：用户可添加、查看和删除记忆；管理员可编辑阶段摘要。当前不自动提取事实或生成摘要。
-- **图片理解**：Vertex 后端直接处理文字与图片，并保留有限图片历史。
+- **图片理解**：支持主模型直接处理图片，或由独立视觉服务生成描述；多模态模式保留有限图片历史。
 - **上下文生图**：结合角色设定、最近对话和上一张图的描述生成完整提示词；也支持 `/draw` 直接生图。
 - **后台图片队列**：默认最多8个等待或运行任务，GPU逐个执行；不发送固定的“正在生成图片”提示。
 - **语音与情景表情**：支持语音回复，本地精选表情优先，缺少匹配时尝试外部动漫动图。
@@ -44,8 +43,8 @@ QQ / OneBot V11 协议端
           ▼
 NoneBot2 消息与命令路由
           ├─ 用户 / 角色状态 ───────────── SQLite
-          ├─ 聊天与图片理解 ───────────── Vertex AI（ADC）
-          │                               或 OpenAI 兼容服务
+          ├─ 聊天与图片理解 ───────────── OpenAI 兼容 API（API Key）
+          │                               可选独立视觉 API
           ├─ 表情选择 ─────────────────── 本地素材 / nekos.best
           ├─ 语音合成 ─────────────────── GPT-SoVITS
           └─ 后台生图队列 ─────────────── ComfyUI
@@ -59,7 +58,7 @@ NoneBot2 消息与命令路由
 
 1. Python 3.10 或以上；下述环境准备示例使用 Windows PowerShell。
 2. 独立运行且支持 OneBot V11 的 QQ 协议端。本仓库不包含 QQ 登录程序。
-3. 可用的 Vertex AI 项目、获授权的 Gemini 模型和 ADC；也可配置 OpenAI 兼容后端。
+3. 支持 OpenAI Chat Completions 协议的模型服务、API Key 和对应模型 ID。
 4. 如需生图，运行 ComfyUI 并安装工作流要求的模型及节点。
 5. 如需语音，运行 GPT-SoVITS 并准备你有权使用的参考音频。
 
@@ -85,7 +84,7 @@ poetry run python bot.py
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "nonebot2[fastapi,httpx]>=2.3,<3" "nonebot-adapter-onebot>=2.4.3,<3" "openai>=1.14,<3" "aiohttp>=3.9.3,<4" "python-dotenv>=1.0.1,<2" "Pillow>=10.4,<13" "google-auth[requests]>=2.40,<3"
+.\.venv\Scripts\python.exe -m pip install "nonebot2[fastapi,httpx]>=2.3,<3" "nonebot-adapter-onebot>=2.4.3,<3" "openai>=1.14,<3" "aiohttp>=3.9.3,<4" "python-dotenv>=1.0.1,<2" "Pillow>=10.4,<13" "httpx>=0.27,<1"
 .\.venv\Scripts\python.exe bot.py
 ```
 
@@ -109,43 +108,58 @@ ws://127.0.0.1:8080/onebot/v11/ws
 
 端口或跨机器部署需要相应调整。不要将本机管理接口直接暴露到公网；协议端的认证设置也应与 NoneBot 配置一致。
 
-### 2. 配置 Vertex AI（ADC）
+### 2. 填写模型 API
 
-本项目通过 `google-auth` 使用应用默认凭据（ADC），不需要将 OAuth 令牌或服务账号密钥写进 `.env`。
-
-安装 [Google Cloud CLI](https://docs.cloud.google.com/sdk/docs/install)，并按组织要求完成登录：
-
-```powershell
-gcloud auth application-default login
-gcloud auth application-default set-quota-project YOUR_PROJECT_ID
-```
-
-在 `.env` 设置：
+在 `.env` 中填写以下三项即可接入聊天。示例使用 DeepSeek 兼容地址，其他服务填写各自的接口地址和模型 ID：
 
 ```dotenv
-LLM_PROVIDER=vertex
-GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID
-GOOGLE_CLOUD_LOCATION=global
-VERTEX_MODEL=gemini-3.8-flash
-VERTEX_THINKING_LEVEL=LOW
-VERTEX_MAX_OUTPUT_TOKENS=2048
-LLM_TIMEOUT=90
-# 需要本机 HTTP 代理时填写实际地址；否则留空
-VERTEX_PROXY=
+LLM_API_KEY=你的API密钥
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
 ```
 
-`VERTEX_MODEL`、地区和模型专用参数必须与控制台实际开放的模型一致。上面的模型 ID 是本项目现有适配配置，不代表所有项目都可使用。登录账号需具备模型调用和配额权限；普通 `gcloud auth login` 不等同于 ADC 登录。组织采用联合身份时，按组织提供的 ADC 流程配置。
+只填写服务的 API 基础地址，不要追加 `/chat/completions`。不同服务对 `/v1` 等路径的要求可能不同，按服务商提供的 OpenAI 兼容示例填写。模型必须实际支持 Chat Completions 协议；原生协议地址不能直接混用。
 
-`VERTEX_PROXY` 同时作用于令牌刷新和模型请求，不代理 ComfyUI 的本机回环访问。收到401时刷新凭据并重试一次；失败不会自动切换到其他模型厂商。
+可选参数：
+
+```dotenv
+LLM_TIMEOUT=90
+LLM_MAX_TOKENS=500
+LLM_TEMPERATURE=0.7
+LLM_EXTRA_BODY={}
+LLM_PROXY=
+```
+
+`LLM_PROXY` 可填写本机 HTTP 代理地址，留空时使用客户端默认网络设置；显式代理不会用于本机回环模型地址。模型特有参数可通过 `LLM_EXTRA_BODY` 传 JSON 对象，需以对应服务的支持范围为准。密钥仅放本机 `.env`，不提交到仓库。
+
+**看图方式一：主模型本身支持多模态。** 同一个 API Key 和接口即可看图：
+
+```dotenv
+LLM_VISION_ENABLED=true
+HISTORY_IMAGES=4
+```
+
+主模型必须支持 OpenAI 格式的 `image_url` 图片内容；纯文本模型不要开启。该模式不调用独立视觉服务，每次请求最多附带最近4张可用图片。图片缓存有期限和容量限制，过期后提示重新发送。
+
+**看图方式二：纯文本主模型 + 独立视觉模型。** 默认 `LLM_VISION_ENABLED=false`，看图时先生成客观描述，再交给聊天模型：
+
+```dotenv
+LLM_VISION_ENABLED=false
+VISION_API_KEY=视觉服务密钥
+VISION_BASE_URL=https://your-vision-provider.example/v1
+VISION_MODEL=实际支持看图的模型ID
+VISION_TEMPERATURE=0.3
+VISION_EXTRA_BODY={}
+```
+
+`VISION_API_KEY`、`VISION_BASE_URL`、`VISION_MODEL` 留空分别沿用聊天服务对应配置。因此同一服务、同一密钥下只换视觉模型时，只需填写 `VISION_MODEL`。纯文本主模型没有搭配可用视觉模型时，文字聊天仍可使用，看图会返回无法识别的说明。
 
 ```powershell
-# 检查 ADC，不生成模型内容
-python tools/check_vertex.py
+# 仅检查必填配置和地址格式，不联网
+python tools/check_api.py
 # 可选：真实短文本调用，会产生模型调用费用
-python tools/check_vertex.py --request
+python tools/check_api.py --request
 ```
-
-可选兼容后端：设置 `LLM_PROVIDER=openai`，填写 `.env.example` 中的 `LLM_*`；独立看图配置为 `ZHIPU_*` 和 `VISION_*`。该模式不经过 Vertex ADC。
 
 ### 3. 配置 ComfyUI
 
@@ -195,7 +209,7 @@ LOCAL_STICKER_DIR=data/sticker_library
 
 `TTS_REF_AUDIO` 是 GPT-SoVITS 服务可读取的参考音频路径；参考音频和权重不随仓库分发。OneBot 端也需能访问生成语音使用的本地文件 URI。
 
-外部表情使用 [nekos.best](https://docs.nekos.best/getting-started/api-endpoints.html)，无需 API 密钥，但需按服务要求设置实际应用名和联系标识。外部接口只接收类别，不接收对话正文。`STICKER_PROXY` 留空时沿用 `VERTEX_PROXY`。
+外部表情使用 [nekos.best](https://docs.nekos.best/getting-started/api-endpoints.html)，无需 API 密钥，但需按服务要求设置实际应用名和联系标识。外部接口只接收类别，不接收对话正文。`STICKER_PROXY` 留空时沿用 `LLM_PROXY`。
 
 本地素材可从管理页导入，并设置情绪、角色文件 ID、适用和避免的关键词。支持 GIF/PNG/JPEG/WebP，每张不超过5MiB，最多500张。无本地匹配时再尝试外部接口；`STICKER_ENABLED=false` 仅关闭外部接口，本地素材仍可使用。
 
@@ -245,7 +259,7 @@ characters/                    角色卡
 src/plugins/chat_and_draw/
   __init__.py                  命令与消息路由
   sessions.py                  用户/角色状态和会话锁
-  llm.py / vertex.py           模型调用、ADC 和动作解析
+  llm.py                       API Key 客户端、多模态消息与动作解析
   comfyui.py / workflow_api.json  工作流字段映射及生图调用
   jobs.py / delivery.py        后台图片任务与独立发送
   runtime.py                   运行、消息、用量和任务记录
@@ -255,7 +269,7 @@ src/plugins/chat_and_draw/
   tavern.py                    角色卡及世界书
   config.py                   配置和路径
 ref_audio/                     自备 TTS 参考音频
-tools/                        ADC 检查与管理令牌工具
+tools/                        API 配置检查与管理令牌工具
 tests/                        离线回归测试
 ```
 
@@ -273,7 +287,7 @@ tests/                        离线回归测试
 
 运行数据库、任务图片和记录目前需自行备份与清理。只运行一个机器人进程；并发会话由进程内锁管理，SQLite 操作在线程中执行，不支持多进程共用数据库。首次启动新版本会迁移旧的当前角色状态，已被旧版本清除的历史无法恢复。
 
-`.env`、ADC 凭据、运行数据、参考音频、本地备份和缓存均不纳入 Git。角色卡、图片、音频、模型权重及节点扩展需遵守各自授权。
+`.env`、API 密钥、运行数据、参考音频、本地备份和缓存均不纳入 Git。角色卡、图片、音频、模型权重及节点扩展需遵守各自授权。
 
 ## 测试与排障
 
@@ -281,11 +295,11 @@ tests/                        离线回归测试
 python -m unittest discover -s tests -v
 ```
 
-0.2 版本已通过93项离线测试，包括角色记忆隔离、旧数据迁移、并发队列、事件去重、Vertex 用量记录、ComfyUI HTTP 往返、发送失败恢复以及管理接口访问限制。测试采用临时数据库、模拟 QQ 和本机 HTTP / ASGI 服务，不会调用真实模型、发送真实 QQ 消息或使用 GPU。
+0.2.1 已通过91项离线测试，覆盖角色记忆隔离、旧数据迁移、并发队列、事件去重、API Key 配置、多模态消息、用量记录、ComfyUI HTTP 往返、发送失败恢复以及管理接口访问限制。测试采用临时数据库、模拟 QQ 和本机 HTTP / ASGI 服务，不会调用真实模型、发送真实 QQ 消息或使用 GPU。
 
 | 现象 | 检查方向 |
 |---|---|
-| 聊天超时，未出现 ComfyUI 接受记录 | 先检查模型权限、ADC、代理和 `LLM_TIMEOUT` |
+| 聊天超时，未出现 ComfyUI 接受记录 | 先检查 API Key、接口地址、模型 ID、代理和 `LLM_TIMEOUT` |
 | ComfyUI 拒绝任务或无图 | 检查工作流模型、节点、字段映射；先手动运行工作流 |
 | 图片已生成但 QQ 未收到 | 在管理页查看发送阶段和任务图片，修复协议端后重发 |
 | 群聊没有回应 | 确认真正 @ 了机器人，OneBot WebSocket 已连接 |

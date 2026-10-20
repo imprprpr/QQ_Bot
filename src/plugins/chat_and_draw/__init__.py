@@ -14,7 +14,7 @@ from nonebot.params import CommandArg
 
 from .config import DATABASE_PATH, MAX_IMAGES
 from .sessions import SessionStore, session_key, trim_history
-from .llm import close_clients, get_chat_response, get_image_description, uses_vertex
+from .llm import close_clients, get_chat_response, get_image_description, direct_vision
 from .comfyui import generate_image
 from .media import cleanup_tts_cache, get_image_base64, get_tts_audio
 from .tavern import tavern_manager
@@ -278,7 +278,7 @@ async def handle_message(bot: Bot, event: Event):
             if image_urls:
                 images = await asyncio.gather(*(get_image_base64(url) for url in image_urls[:MAX_IMAGES]))
                 images = [image for image in images if image]
-                if uses_vertex():
+                if direct_vision():
                     for image in images:
                         try:
                             attachments.append(await asyncio.to_thread(save_image, image))

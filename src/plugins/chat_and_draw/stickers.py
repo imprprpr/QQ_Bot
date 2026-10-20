@@ -73,7 +73,7 @@ def _remember(category, data):
 def _proxy(url):
     if urlsplit(url).hostname in {"127.0.0.1", "localhost", "::1"}:
         return None
-    return os.getenv("STICKER_PROXY") or os.getenv("VERTEX_PROXY") or None
+    return os.getenv("STICKER_PROXY") or os.getenv("LLM_PROXY") or None
 
 
 def _validate_image(data):

@@ -19,8 +19,7 @@ from PIL import Image
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.adapters.onebot.v11.exception import ActionFailed
 
-# The legacy-backend regressions must not use the user's chosen live provider.
-os.environ["LLM_PROVIDER"] = "openai"
+# All model requests below are mocked or served by loopback HTTP fixtures.
 nonebot.init(log_level="INFO")
 plugin = importlib.import_module("src.plugins.chat_and_draw")
 llm = importlib.import_module("src.plugins.chat_and_draw.llm")
@@ -482,7 +481,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(reply[1])
 
     async def test_missing_optional_vision_key_does_not_create_client(self):
-        with patch.dict(os.environ, {"ZHIPU_API_KEY": ""}):
+        with patch.dict(os.environ, {"VISION_API_KEY": "", "LLM_API_KEY": ""}):
             with self.assertRaises(ValueError):
                 llm.get_client(vision=True)
 
