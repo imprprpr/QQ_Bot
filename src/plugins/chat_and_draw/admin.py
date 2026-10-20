@@ -16,6 +16,7 @@ from nonebot.adapters.onebot.v11 import MessageSegment
 from .delivery import try_send
 from .runtime import ARTIFACT_DIR, RuntimeStore, operation
 from .sticker_library import library
+from .memory import EventMemoryStore
 
 
 def admin_token(store):
@@ -129,6 +130,25 @@ def register_admin(app, get_store):
                 await store.update_memory(key, character, list(dict.fromkeys(n.strip() for n in notes if n.strip())), summary.strip())
             except ValueError:
                 raise HTTPException(404, "角色记忆不存在")
+        return {"ok": True}
+
+    @app.get("/manage/api/events", include_in_schema=False)
+    async def events(request: Request, session_key: str, character: str):
+        await guard(request)
+        return await EventMemoryStore(get_store().path).list(session_key, character)
+
+    @app.post("/manage/api/events/forget", include_in_schema=False)
+    async def forget_event(request: Request):
+        await guard(request)
+        data = await read_json(request, 4000)
+        key, character, identity = data.get("session_key"), data.get("character"), data.get("id")
+        if not all(isinstance(value, str) and value for value in (key, character, identity)):
+            raise HTTPException(400, "需要会话、角色和记忆ID")
+        store = get_store()
+        async with store.lock(key):
+            changed = await EventMemoryStore(store.path).forget(key, character, identity)
+        if not changed:
+            raise HTTPException(404, "该角色的自动记忆不存在")
         return {"ok": True}
 
     async def artifact(identity):

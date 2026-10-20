@@ -20,6 +20,7 @@ from nonebot.adapters.onebot.v11 import Message
 from nonebot.adapters.onebot.v11.exception import ActionFailed
 
 # All model requests below are mocked or served by loopback HTTP fixtures.
+os.environ["EVENT_MEMORY_ENABLED"] = "false"  # New tests explicitly mock the extractor when enabling it.
 nonebot.init(log_level="INFO")
 plugin = importlib.import_module("src.plugins.chat_and_draw")
 llm = importlib.import_module("src.plugins.chat_and_draw.llm")

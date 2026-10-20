@@ -24,6 +24,7 @@ from .stickers import get_sticker, normalize_category
 from .runtime import RuntimeStore, operation, record
 from .jobs import enqueue_draw, stop_jobs, recover_jobs
 from .admin import register_admin
+from .memory import EventMemoryStore, prepare as prepare_event_memory
 
 store = SessionStore(DATABASE_PATH)
 
@@ -43,6 +44,8 @@ cmd_draw = on_command("draw", aliases={"画图"}, rule=addressed, priority=5, bl
 cmd_memory = on_command("memory", aliases={"记忆"}, rule=addressed, priority=5, block=True)
 cmd_remember = on_command("remember", aliases={"记住"}, rule=addressed, priority=5, block=True)
 cmd_forget = on_command("forget", aliases={"忘记"}, rule=addressed, priority=5, block=True)
+cmd_events = on_command("events", aliases={"共同记忆"}, rule=addressed, priority=5, block=True)
+cmd_forget_event = on_command("forgetevent", aliases={"删除事件"}, rule=addressed, priority=5, block=True)
 chat_handler = on_message(rule=addressed, priority=10, block=True)
 
 
@@ -66,6 +69,7 @@ async def handle_help():
         "角色聊天机器人\n"
         "/cards：查看角色\n/switch 名字：切换并恢复该角色记忆\n"
         "/memory：查看角色记忆\n/remember 内容：记住长期信息\n/forget 序号：删除记忆\n"
+        "/events：查看自动记忆及来源\n/forgetevent ID 或 all：删除自动记忆\n"
         "/reset：重置当前会话记忆\n/proactive on 或 off：开启或关闭主动聊天（仅私聊，默认关闭）\n"
         "/draw 英文标签：直接调用 ComfyUI，不经过聊天模型\n"
         "可以要求发照片、换装或发送语音。群聊请先 @ 机器人。"
@@ -112,6 +116,7 @@ async def handle_reset(bot: Bot, event: Event):
         session.summary = ""
         session.touch()
         await store.save(session)
+        await EventMemoryStore(store.path).forget(key, session.character)
         await cmd_reset.send("记忆已重置！\n" + greeting)
 
 
@@ -143,6 +148,39 @@ async def handle_remember(bot: Bot, event: Event, args: Message = CommandArg()):
             session.memories.append(text)
         await store.save(session)
         await cmd_remember.send("记住啦，这条记忆只属于你与当前角色。")
+
+
+@cmd_events.handle()
+async def handle_events(bot: Bot, event: Event):
+    key = session_key(bot, event)
+    async with store.lock(key):
+        session = await store.load(key)
+        items = await EventMemoryStore(store.path).list(key, session.character)
+        lines = [f"{item['id'][:8]} [{item['status']}] {item['statement']}\n"
+                 f"记录于{datetime.fromtimestamp(item['mentioned_at']).isoformat(timespec='minutes')}，"
+                 f"事件日期{item['event_date'] or '未明确'}，来源{item['source_run_id'][:8]}"
+                 for item in items[:10]]
+        await cmd_events.send("当前角色的自动记忆（最近10条）：\n" + ("\n\n".join(lines) if lines else "暂无。") +
+                              "\n可用 /forgetevent ID 删除；管理页可查看全部有效记录。")
+
+
+@cmd_forget_event.handle()
+async def handle_forget_event(bot: Bot, event: Event, args: Message = CommandArg()):
+    identity = args.extract_plain_text().strip().lower()
+    key = session_key(bot, event)
+    async with store.lock(key):
+        session = await store.load(key)
+        memories = EventMemoryStore(store.path)
+        if identity == "all":
+            await memories.forget(key, session.character)
+        else:
+            items = await memories.list(key, session.character)
+            matches = [item for item in items if len(identity) >= 8 and item["id"].startswith(identity)]
+            if len(matches) != 1:
+                await cmd_forget_event.send("先用 /events 查看 ID，再用 /forgetevent ID 删除；all 清空当前角色的自动记忆。")
+                return
+            await memories.forget(key, session.character, matches[0]["id"])
+        await cmd_forget_event.send("已移除当前角色对应的自动记忆，后续不再用于回忆。")
 
 
 @cmd_forget.handle()
@@ -295,8 +333,11 @@ async def handle_message(bot: Bot, event: Event):
             session.history = trim_history(session.history)
             await store.save(session)
             context_args = {"visual_context": session.last_image_prompt} if session.last_image_prompt else {}
-            if session.memories or session.summary:
+            events = await prepare_event_memory(store.path, session, text, scope.run_id)
+            if session.memories or session.summary or events:
                 context_args["memory_context"] = {"memories": session.memories, "summary": session.summary}
+                if events:
+                    context_args["memory_context"]["events"] = events
             reply, draw, sticker, voice = await get_chat_response(session.history, card=current_card(session), **context_args)
             explicit_voice = bool(re.search(r"发.*语音|说句话|听听你的声音|录音", text))
             cooldown = max(0, float(os.getenv("STICKER_COOLDOWN", "30")))

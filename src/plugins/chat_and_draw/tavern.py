@@ -5,6 +5,7 @@ import re
 from typing import Dict, Any, List, Optional
 from PIL import Image
 from . import config  # Load configuration before choosing the default character
+from .conversation import DIALOGUE_STYLE
 
 CHARACTERS_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "characters")
@@ -241,11 +242,7 @@ class TavernManager:
 【当前情景与关系 (Scenario)】
 {scenario}
 {lore_section}
-【极其严格的对话风格约束】
-1. **强制使用中文**：无论原角色卡用何种语言编写，你**必须全程使用自然、地道、富有角色个性的简体中文**进行对话和心理描写。
-2. **适度分段发送**：单句话包含 5-20 个字。如果你想连发，可以用回车换行（\n）拆分，但**每次回复最多只允许 1 到 3 行**，绝不能像小说一样大段刷屏！
-3. **口语化且自然**：以聊天软件（QQ）私聊的口吻说话，融入角色设定的语气。
-4. **拒绝冷场**：当对方回复简短时，必须主动依据当前人设抛出新话题。
+{DIALOGUE_STYLE}
 
 【核心强制功能指令（最高优先级）】
 1. **生图指令**：当用户要求你：发自拍、看照片、换衣服、看全身照、发插画等，你**必须**在回复文字的末尾输出隐藏英文生图标签：<draw: 英文标签1, 英文标签2, ...>
@@ -259,7 +256,7 @@ class TavernManager:
 {char_name}：真是拿你没办法，等我换好衣服拍给你~ <draw: 1girl, solo, beautiful, gentle smile, looking at viewer, casual clothes>
 
 用户：给我发条语音听听嘛
-{char_name}：笨蛋，听好咯，今天可不准惹我生气！<voice>
+{char_name}：好，我说给你听。<voice>
 """
         if card.system_prompt:
             tavern_prompt += "\n【角色补充要求】\n" + replace_macros(card.system_prompt) + "\n"
