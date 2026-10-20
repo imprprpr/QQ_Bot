@@ -17,6 +17,7 @@ from .runtime import record
 from .config import HISTORY_IMAGES
 from .image_history import load_image
 from .conversation import DIALOGUE_STYLE, dialogue_context
+from .incoming_images import normalize_image
 
 MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 
@@ -177,11 +178,14 @@ async def get_image_description(image_b64_list: list, context_text: str = "") ->
             content.append({"type": "text", "text": f"用户发了一段话：{context_text}。请结合这段话客观描述下面的图片里有什么画面、表情包文字或人物动作，不要扮演角色，纯客观描述。"})
         else:
             content.append({"type": "text", "text": "请纯客观描述下面图片里的画面、表情包上的文字或情绪，不要扮演角色。"})
+        content[0]["text"] += "如果有文字请准确读出；表情包请说明表情和含义。若是多格拼图可能是动图采样帧，不要编造看不到的动作。"
 
         for b64 in image_b64_list:
-            with Image.open(io.BytesIO(base64.b64decode(b64))) as image:
+            data = await asyncio.to_thread(normalize_image, base64.b64decode(b64))
+            with Image.open(io.BytesIO(data)) as image:
                 mime = Image.MIME.get(image.format, "image/jpeg")
-            content.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
+            encoded = base64.b64encode(data).decode("ascii")
+            content.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}})
 
         messages = [{"role": "user", "content": content}]
 
@@ -189,17 +193,25 @@ async def get_image_description(image_b64_list: list, context_text: str = "") ->
         response = await asyncio.wait_for(get_client(vision=True).chat.completions.create(
             model=model,
             messages=messages,
-            max_tokens=200,
+            max_tokens=max(1, int(os.getenv("VISION_MAX_TOKENS", "2048"))),
             temperature=float(os.getenv("VISION_TEMPERATURE", "0.3")),
             extra_body=extra_parameters(vision=True),
         ), timeout=LLM_TIMEOUT)
         await record_usage(response, model)
+        reason = getattr(response.choices[0], "finish_reason", None)
+        if reason not in {None, "stop"}:
+            logger.warning("Vision response incomplete: finish_reason={}, model={}", reason, model)
+            await record("vision", "failed", error="INCOMPLETE_RESPONSE", finish_reason=reason, model=model)
+            return "[视觉识别失败：图片已接收，但识图模型没有完整返回结果；不能推断图片模糊或用户网络故障。]"
+        description = response_content(response)
+        if not isinstance(description, str) or not description.strip():
+            raise ValueError("EMPTY_VISION_CONTENT")
         await record("vision", "completed", model=model)
-        return response_content(response).strip()
+        return description.strip()
     except Exception as e:
         logger.warning("Vision request failed: {}", type(e).__name__)
-        await record("vision", "failed", error=type(e).__name__)
-        return "一张无法识别的图片"
+        await record("vision", "failed", error=type(e).__name__, http_status=getattr(e, "status_code", None), model=vision_model())
+        return "[视觉识别失败：机器人这边的识图服务暂时没有得到有效结果；不要猜测用户网络或图片清晰度。]"
 
 from .tavern import tavern_manager
 

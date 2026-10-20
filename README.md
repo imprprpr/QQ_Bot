@@ -1,6 +1,6 @@
 # AnimaBot · QQ 角色聊天机器人
 
-基于 **NoneBot2 + OneBot V11** 的 QQ 角色陪伴机器人，支持多角色对话、图片理解、ComfyUI 生图、GPT-SoVITS 语音和情景表情包。当前版本 **0.3.0**。
+基于 **NoneBot2 + OneBot V11** 的 QQ 角色陪伴机器人，支持多角色对话、图片理解、ComfyUI 生图、GPT-SoVITS 语音和情景表情包。当前版本 **0.3.1**。
 
 每个用户与每个角色分别保留上下文和长期信息；图片任务在后台排队，出图期间仍可聊天。项目带有仅限本机访问的管理页，可查看运行记录、任务结果与模型 token 用量。
 
@@ -150,8 +150,13 @@ VISION_API_KEY=视觉服务密钥
 VISION_BASE_URL=https://your-vision-provider.example/v1
 VISION_MODEL=实际支持看图的模型ID
 VISION_TEMPERATURE=0.3
+VISION_MAX_TOKENS=2048
 VISION_EXTRA_BODY={}
 ```
+
+入站 GIF 和动画 WebP 会先转换成最多3格 PNG 关键帧拼图，再交给模型；采样限于前120帧，不能保证覆盖整段动画。静态 JPEG/PNG/WebP 保持原格式。QQ `image` 与 `mface` 消息都会读取，必要时通过协议端的 `get_image` 获取缓存地址。商城表情的兼容依据见 [NapCat 消息格式](https://napneko.github.io/develop/msg)。
+
+独立视觉接口的输出预算默认 `VISION_MAX_TOKENS=2048`。若返回截断、内容过滤或空正文，会记录失败及完成原因，不把残缺结果当作有效描述。纯图片消息在识别失败时直接发送明确的服务端失败说明，跳过聊天模型编造原因及旧事件回忆；附带文字的问题仍可按文字继续处理。图片读取失败不推断是用户网络或清晰度问题；可在管理页检查 `image-input`、`image-fetch` 和 `vision` 阶段。
 
 `VISION_API_KEY`、`VISION_BASE_URL`、`VISION_MODEL` 留空分别沿用聊天服务对应配置。因此同一服务、同一密钥下只换视觉模型时，只需填写 `VISION_MODEL`。纯文本主模型没有搭配可用视觉模型时，文字聊天仍可使用，看图会返回无法识别的说明。
 
@@ -293,6 +298,7 @@ src/plugins/chat_and_draw/
   runtime.py                   运行、消息、用量和任务记录
   sticker_library.py / stickers.py  本地及外部表情
   media.py / image_history.py  语音与图片历史缓存
+  incoming_images.py           入站表情/图片地址解析与动图转码
   admin.py / manage.html      本机管理 API 与页面
   tavern.py                    角色卡及世界书
   config.py                   配置和路径
@@ -323,7 +329,7 @@ tests/                        离线回归测试
 python -m unittest discover -s tests -v
 ```
 
-0.3 版本已通过116项离线测试，覆盖角色记忆隔离、旧数据迁移、并发队列、事件去重、API Key 配置、多模态消息、用量记录、ComfyUI HTTP 往返、发送失败恢复以及管理接口访问限制。测试采用临时数据库、模拟 QQ 和本机 HTTP / ASGI 服务，不会调用真实模型、发送真实 QQ 消息或使用 GPU。
+0.3.1 版本已通过131项离线测试，覆盖角色记忆隔离、旧数据迁移、并发队列、事件去重、API Key 配置、多模态消息、用量记录、ComfyUI HTTP 往返、发送失败恢复以及管理接口访问限制。测试采用临时数据库、模拟 QQ 和本机 HTTP / ASGI 服务，不会调用真实模型、发送真实 QQ 消息或使用 GPU。
 
 | 现象 | 检查方向 |
 |---|---|

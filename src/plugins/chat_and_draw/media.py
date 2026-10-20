@@ -11,6 +11,8 @@ import aiohttp
 from nonebot import logger
 
 from .config import MAX_IMAGE_BYTES, TTS_CACHE_DIR, TTS_CACHE_TTL, TTS_TIMEOUT
+from .incoming_images import normalize_image
+from PIL import Image
 
 
 def clean_speech(text: str) -> str:
@@ -100,7 +102,8 @@ async def get_image_base64(url: str) -> str | None:
             data = await asyncio.to_thread(read)
         if not data or len(data) > MAX_IMAGE_BYTES:
             return None
+        data = await asyncio.to_thread(normalize_image, data)
         return base64.b64encode(data).decode("ascii")
-    except (aiohttp.ClientError, asyncio.TimeoutError, OSError, ValueError) as exc:
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError, ValueError, EOFError, Image.DecompressionBombError) as exc:
         logger.warning("Image download failed: {}", type(exc).__name__)
         return None

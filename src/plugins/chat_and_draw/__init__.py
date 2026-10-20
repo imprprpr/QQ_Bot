@@ -25,6 +25,7 @@ from .runtime import RuntimeStore, operation, record
 from .jobs import enqueue_draw, stop_jobs, recover_jobs
 from .admin import register_admin
 from .memory import EventMemoryStore, prepare as prepare_event_memory
+from .incoming_images import read_image
 
 store = SessionStore(DATABASE_PATH)
 
@@ -286,19 +287,19 @@ async def send_reply(reply_text, draw_tags, sticker, voice, *, allow_sticker=Tru
 
 @chat_handler.handle()
 async def handle_message(bot: Bot, event: Event):
-    text_parts, image_urls = [], []
+    text_parts, image_urls, memory_text_parts = [], [], []
     for seg in event.get_message():
         if seg.type == "text":
             text_parts.append(seg.data.get("text", ""))
+            memory_text_parts.append(seg.data.get("text", ""))
         elif seg.type == "face":
             text_parts.append(f"[表情{seg.data.get('id', '')}]")
-        elif seg.type == "mface":
-            text_parts.append("[动画表情]")
-        elif seg.type == "image":
-            url = seg.data.get("url") or seg.data.get("file")
-            if url:
-                image_urls.append(url)
+        elif seg.type in {"mface", "image"}:
+            image_urls.append(dict(seg.data))
+            if seg.data.get("summary"):
+                text_parts.append("[QQ提供的表情名称：" + str(seg.data["summary"])[:100] + "]")
     text = "".join(text_parts).strip()
+    memory_text = "".join(memory_text_parts).strip()
     if not text and not image_urls:
         return
     key = session_key(bot, event)
@@ -313,8 +314,10 @@ async def handle_message(bot: Bot, event: Event):
             await store.save(session)
             combined_text = text
             attachments = []
+            visual_failed = False
             if image_urls:
-                images = await asyncio.gather(*(get_image_base64(url) for url in image_urls[:MAX_IMAGES]))
+                await record("image-input", "started", count=min(len(image_urls), MAX_IMAGES))
+                images = await asyncio.gather(*(read_image(bot, data, get_image_base64) for data in image_urls[:MAX_IMAGES]))
                 images = [image for image in images if image]
                 if direct_vision():
                     for image in images:
@@ -322,10 +325,13 @@ async def handle_message(bot: Bot, event: Event):
                             attachments.append(await asyncio.to_thread(save_image, image))
                         except (OSError, ValueError) as exc:
                             logger.warning("Image attachment failed: {}", type(exc).__name__)
-                    combined_text += "\n[用户发送了图片]" if attachments else "\n[图片解析失败]"
+                    visual_failed = not attachments
+                    combined_text += "\n[用户发送了图片]" if attachments else "\n[图片读取失败：机器人这边未能读取，不能推断用户网络或图片清晰度。]"
                 else:
-                    description = await get_image_description(images, text) if images else "图片解析失败"
+                    description = await get_image_description(images, text) if images else "[视觉识别失败：机器人未能读取图片，不推断用户网络或图片模糊。]"
+                    visual_failed = description.startswith("[视觉识别失败")
                     combined_text += f"\n[用户发送的图片描述：{description}]"
+                await record("image-input", "failed" if visual_failed else "completed", received=len(images), readable=not visual_failed)
             user_message = {"role": "user", "content": combined_text}
             if attachments:
                 user_message["images"] = attachments
@@ -333,12 +339,16 @@ async def handle_message(bot: Bot, event: Event):
             session.history = trim_history(session.history)
             await store.save(session)
             context_args = {"visual_context": session.last_image_prompt} if session.last_image_prompt else {}
-            events = await prepare_event_memory(store.path, session, text, scope.run_id)
+            events = [] if visual_failed else await prepare_event_memory(store.path, session, memory_text, scope.run_id)
             if session.memories or session.summary or events:
                 context_args["memory_context"] = {"memories": session.memories, "summary": session.summary}
                 if events:
                     context_args["memory_context"]["events"] = events
-            reply, draw, sticker, voice = await get_chat_response(session.history, card=current_card(session), **context_args)
+            if visual_failed and not memory_text:
+                # An image-only failure has no reliable conversational content to improvise on.
+                reply, draw, sticker, voice = "这张表情包我这边没识别成功，暂时还读不到内容。", None, None, False
+            else:
+                reply, draw, sticker, voice = await get_chat_response(session.history, card=current_card(session), **context_args)
             explicit_voice = bool(re.search(r"发.*语音|说句话|听听你的声音|录音", text))
             cooldown = max(0, float(os.getenv("STICKER_COOLDOWN", "30")))
             allow_sticker = time.time() - session.last_sticker_time >= cooldown or bool(re.search(r"表情包|动图", text))
