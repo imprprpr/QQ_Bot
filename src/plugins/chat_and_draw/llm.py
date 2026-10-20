@@ -18,6 +18,7 @@ from .config import HISTORY_IMAGES
 from .image_history import load_image
 from .conversation import DIALOGUE_STYLE, dialogue_context
 from .incoming_images import normalize_image
+from .local_client import local_client
 
 MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 
@@ -33,6 +34,9 @@ def vision_model():
 
 
 def get_client(vision=False):
+    custom = local_client(vision=vision)
+    if custom is not None:
+        return custom
     prefix = "VISION" if vision else "LLM"
     key = os.getenv(f"{prefix}_API_KEY") or (os.getenv("LLM_API_KEY") if vision else None)
     if not key:
@@ -87,16 +91,24 @@ def response_content(response):
 async def record_usage(response, model):
     usage = getattr(response, "usage", None)
     if usage is not None:
-        await record("usage", "completed", provider="openai-compatible", model=model,
+        await record("usage", "completed", provider=provider_name(), model=model,
                      input_tokens=getattr(usage, "prompt_tokens", 0),
                      output_tokens=getattr(usage, "completion_tokens", 0),
                      total_tokens=getattr(usage, "total_tokens", 0))
 
 
 async def close_clients():
+    from .local_client import close_local_clients
+    await close_local_clients()
     for client in _clients.values():
         await client.close()
     _clients.clear()
+
+
+def provider_name():
+    if os.getenv("LLM_CLIENT_FACTORY", "").strip():
+        return os.getenv("LLM_BACKEND_LABEL", "local-adapter")
+    return "openai-compatible"
 
 
 def extra_parameters(vision=False):
@@ -241,9 +253,9 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
         current_system_prompt += memory_payload(memory_context)
 
     started = time.monotonic()
-    logger.info("Chat request started: provider=openai-compatible, model={}", MODEL)
+    logger.info("Chat request started: provider={}, model={}", provider_name(), MODEL)
     try:
-        await record("model", "started", provider="openai-compatible")
+        await record("model", "started", provider=provider_name(), model=MODEL)
         messages = build_messages(current_system_prompt, messages_history)
         response = await asyncio.wait_for(get_client().chat.completions.create(
             model=MODEL,

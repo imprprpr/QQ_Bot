@@ -75,6 +75,8 @@ Copy-Item .env.example .env
 
 已有 `.env` 时不要覆盖。依赖可以使用 Poetry 安装：
 
+本机专用设置可写入 `.env.local`，其优先级高于 `.env` 和同名环境变量；该文件及 `.local/` 目录均不纳入 Git。公开版本默认使用下面的 API Key 配置。本机特殊服务可通过 `LLM_CLIENT_FACTORY` 指定私有 Python 文件，文件提供 `create_client(vision=False)`，返回兼容 `chat.completions.create()` 与异步 `close()` 的客户端；日志名称可用 `LLM_BACKEND_LABEL` 设置。私有适配器及其依赖由部署者单独维护，不随仓库发布。
+
 ```powershell
 poetry install --no-root
 # 完成下面的配置后启动
@@ -329,7 +331,7 @@ tests/                        离线回归测试
 python -m unittest discover -s tests -v
 ```
 
-0.3.1 版本已通过131项离线测试，覆盖角色记忆隔离、旧数据迁移、并发队列、事件去重、API Key 配置、多模态消息、用量记录、ComfyUI HTTP 往返、发送失败恢复以及管理接口访问限制。测试采用临时数据库、模拟 QQ 和本机 HTTP / ASGI 服务，不会调用真实模型、发送真实 QQ 消息或使用 GPU。
+0.3.1 版本已通过134项离线测试，覆盖角色记忆隔离、旧数据迁移、并发队列、事件去重、API Key 配置、多模态消息、用量记录、ComfyUI HTTP 往返、发送失败恢复以及管理接口访问限制。测试采用临时数据库、模拟 QQ 和本机 HTTP / ASGI 服务，不会调用真实模型、发送真实 QQ 消息或使用 GPU。
 
 | 现象 | 检查方向 |
 |---|---|

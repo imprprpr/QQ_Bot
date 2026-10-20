@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(ROOT / ".env")
+# Deployment-specific overrides are private and never release assets.
+load_dotenv(ROOT / ".env.local", override=True)
 
 
 def positive_number(name: str, default: float) -> float:

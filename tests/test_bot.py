@@ -23,6 +23,8 @@ from nonebot.adapters.onebot.v11.exception import ActionFailed
 os.environ["EVENT_MEMORY_ENABLED"] = "false"  # New tests explicitly mock the extractor when enabling it.
 nonebot.init(log_level="INFO")
 plugin = importlib.import_module("src.plugins.chat_and_draw")
+# Offline tests must never select an operator's private deployment adapter.
+os.environ["LLM_CLIENT_FACTORY"] = ""
 llm = importlib.import_module("src.plugins.chat_and_draw.llm")
 media = importlib.import_module("src.plugins.chat_and_draw.media")
 comfy = importlib.import_module("src.plugins.chat_and_draw.comfyui")
