@@ -1,0 +1,24 @@
+[Unit]
+Description=AnimaBot QQ companion
+Wants=network-online.target
+After=network-online.target
+# Continue retrying after prolonged outages; RestartSec prevents a tight loop.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/QQ_Bot
+Environment=HOME=/home/ubuntu
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/QQ_Bot/.venv/bin/python /home/ubuntu/QQ_Bot/bot.py
+Restart=always
+RestartSec=5s
+TimeoutStopSec=30s
+KillMode=control-group
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -358,3 +358,22 @@ TTS_ENABLED=false
 云端与本机分别保存配置、凭据和运行数据库；不要把本机的代理地址、音频路径或凭据文件直接提交到仓库。
 
 表情包仅发送本地素材或 API 图片，不使用 QQ 内置表情作为回退。表情包获取或发送失败时保留文字回复，其他工具继续独立执行。
+
+## systemd 后台管理
+
+Ubuntu 部署模板见 `deploy/systemd/anima-bot.service`。按实际部署修改用户、HOME、项目目录和虚拟环境路径，然后安装：
+
+```bash
+sudo install -m 644 deploy/systemd/anima-bot.service /etc/systemd/system/anima-bot.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now anima-bot.service
+```
+
+服务使用 `Restart=always`，进程退出或被杀后间隔5秒重新启动，服务器开机后自动启动。`systemctl stop anima-bot` 是管理员主动停止，不会被自动拉起；真正关机的云实例需要通过云平台开机，服务文件不能为关机实例通电。SSH 隧道和浏览器访问不属于此服务。
+
+```bash
+sudo systemctl status anima-bot --no-pager
+sudo systemctl restart anima-bot
+sudo systemctl stop anima-bot
+sudo journalctl -u anima-bot -f
+```
