@@ -276,7 +276,7 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
         await record("model", "failed", error="TimeoutError", elapsed=round(time.monotonic() - started, 3))
         logger.warning("Chat model timed out after {:.1f}s; ComfyUI was not submitted",
                        time.monotonic() - started)
-        return ("" if silent_failure else "聊天模型响应超时了，这次还没有开始生图，请稍后重试。"), None, None, False
+        return ("" if silent_failure else "这次回复等得有点久，模型服务暂时没有响应，请稍后再试。"), None, None, False
     except Exception as e:
         await record("model", "failed", error=type(e).__name__)
         logger.warning("Chat request failed: {}", type(e).__name__)

@@ -72,7 +72,7 @@ async def handle_help():
         "/memory：查看角色记忆\n/remember 内容：记住长期信息\n/forget 序号：删除记忆\n"
         "/events：查看自动记忆及来源\n/forgetevent ID 或 all：删除自动记忆\n"
         "/reset：重置当前会话记忆\n/proactive on 或 off：开启或关闭主动聊天（仅私聊，默认关闭）\n"
-        + ("/draw 英文标签：直接调用 ComfyUI，不经过聊天模型\n" if feature_enabled("DRAW_ENABLED") else "当前未启用生图。\n")
+        + ("/draw 英文画面描述：直接调用图片服务，不经过聊天模型\n" if feature_enabled("DRAW_ENABLED") else "当前未启用生图。\n")
         + ("支持发送语音。" if feature_enabled("TTS_ENABLED") else "当前未启用语音。")
         + "群聊请先 @ 机器人。"
     )

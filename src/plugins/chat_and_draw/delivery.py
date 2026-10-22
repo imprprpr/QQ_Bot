@@ -32,7 +32,7 @@ class DeliveryResult:
             return "[工具执行结果：图片已生成，QQ 发送接口返回成功。]"
         if self.image_generated:
             return "[工具执行结果：图片已生成，但 QQ 发送失败，用户尚未收到图片。]"
-        return "[工具执行结果：ComfyUI 未成功生成图片，用户尚未收到图片。]"
+        return "[工具执行结果：图片服务未成功生成图片，用户尚未收到图片。]"
 
 
 def log_send_error(stage, exc):
@@ -71,7 +71,7 @@ async def try_send(matcher, message, stage):
 async def deliver_image(matcher, image, result):
     if image is None:
         await task_update(status="failed", error="GENERATION_FAILED")
-        await try_send(matcher, MessageSegment.text("ComfyUI 图片生成失败或超时，请稍后再试。"), "draw-failure-notice")
+        await try_send(matcher, MessageSegment.text("图片生成失败或超时，请稍后再试。"), "draw-failure-notice")
         return
     result.image_generated = True
     try:

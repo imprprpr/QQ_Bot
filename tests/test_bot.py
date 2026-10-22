@@ -30,6 +30,8 @@ os.environ["TTS_ENABLED"] = "true"
 os.environ["TTS_BACKEND"] = "gpt-sovits"
 os.environ["TTS_DELIVERY"] = "file"
 os.environ["TTS_HEADERS_FACTORY"] = ""
+os.environ["DRAW_BACKEND"] = "comfyui"
+os.environ["DRAW_CLIENT_FACTORY"] = ""
 llm = importlib.import_module("src.plugins.chat_and_draw.llm")
 media = importlib.import_module("src.plugins.chat_and_draw.media")
 comfy = importlib.import_module("src.plugins.chat_and_draw.comfyui")
@@ -502,7 +504,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(llm, "get_client", return_value=client), patch.object(llm, "LLM_TIMEOUT", 0.01):
             self.assertEqual(await llm.get_chat_response([], silent_failure=True), ("", None, None, False))
             reply = await llm.get_chat_response([])
-            self.assertIn("还没有开始生图", reply[0])
+            self.assertIn("暂时没有响应", reply[0])
             self.assertIsNone(reply[1])
 
     async def test_missing_optional_vision_key_does_not_create_client(self):

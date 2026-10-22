@@ -1,6 +1,6 @@
 # AnimaBot · QQ 角色聊天机器人
 
-基于 **NoneBot2 + OneBot V11** 的 QQ 角色陪伴机器人，支持多角色对话、图片理解、ComfyUI 生图、GPT-SoVITS / Genie-TTS / Google Chirp 3 HD 语音和情景表情包。当前版本 **0.3.5**。
+基于 **NoneBot2 + OneBot V11** 的 QQ 角色陪伴机器人，支持多角色对话、图片理解、ComfyUI / 云 API 生图、GPT-SoVITS / Genie-TTS / Google Chirp 3 HD 语音和情景表情包。当前版本 **0.3.6**。
 
 每个用户与每个角色分别保留上下文和长期信息；图片任务在后台排队，出图期间仍可聊天。项目带有仅限本机访问的管理页，可查看运行记录、任务结果与模型 token 用量。
 
@@ -12,7 +12,7 @@
 | 机器人框架 | NoneBot2、nonebot-adapter-onebot | 接收 OneBot V11 事件、回复 QQ 消息 |
 | Web 服务 | FastAPI、Uvicorn | OneBot 接入、本机管理 API 和网页 |
 | 聊天与图片理解 | OpenAI Python SDK、OpenAI 兼容 API | 填写 API Key、Base URL、模型 ID；可共用多模态 API 或配置独立视觉服务 |
-| 图片生成 | ComfyUI HTTP API | 提交 API 工作流、轮询任务、下载生成图片 |
+| 图片生成 | ComfyUI / 云图片 API | 可配置本机工作流或独立云服务，结果进入原有任务与发送流程 |
 | 语音合成 | GPT-SoVITS / Genie-TTS / Google Chirp 3 HD HTTP API | 按角色选择音色，失败时回退文字 |
 | 持久化 | SQLite（Python sqlite3） | 用户/角色状态、消息档案、运行阶段与生图任务 |
 | 表情素材 | 本地图片库、JSON 标签、nekos.best API | 根据角色、情绪和场景筛选表情 |
@@ -201,6 +201,34 @@ DRAW_SCHEDULER=normal
 
 超时或机器人退出只结束本地等待，不会取消 ComfyUI 已接受的任务。重启后旧任务标记为中断，不自动重新生成。
 
+#### 使用云端图片服务
+
+本机默认保持 `DRAW_BACKEND=comfyui`。无 GPU 的云服务器可选择 `DRAW_BACKEND=api`，保留原来的后台队列、角色上下文、图片保存与失败重发。支持返回 `data[0].b64_json` 的 OpenAI 风格 `/images/generations` 服务：
+
+```dotenv
+DRAW_ENABLED=true
+DRAW_BACKEND=api
+DRAW_API_BASE_URL=https://图片服务的API根地址/v1
+DRAW_API_KEY=你的服务端密钥
+DRAW_API_MODEL=服务支持的图像模型
+DRAW_API_SIZE=1024x1024
+DRAW_TIMEOUT=120
+```
+
+`DRAW_API_MODEL` 必须是支持图片输出的模型，不能填写普通聊天模型。响应图片会校验格式和大小，不下载服务响应里的任意 URL。当前链路使用文本画面描述重新生成图片，没有把参考图片直接传给图像接口，也不加载 ComfyUI 检查点或 LoRA。
+
+对不同鉴权/协议的服务，可在部署私有配置中设置 `DRAW_CLIENT_FACTORY`，指向可信 Python 文件，提供 `async generate_image(prompt) -> bytes`。该文件由部署者维护，不能包含在发布包或提交凭据。路径错误会明确失败，不静默调用其他计费服务。Google Cloud 图像服务可以通过这样的适配器接入；应按最新官方生命周期选择仍支持的图像模型，单独核对权限和费用，不能假设专用赠金一定覆盖生图。
+
+云端图片默认每次请求一张，遇到超时不自动再次生成，避免结果不确定时重复计费。失败可在管理界面检查阶段记录后决定是否重试。`/draw` 会使用所选后端，不再固定绑定 ComfyUI。
+
+#### 模型请求分阶段诊断与有界重试
+
+`http_transport.py` 提供与服务商无关的 JSON HTTP 适配工具，供私有模型适配器及图片 API 使用。它记录 `model-http` 阶段：认证耗时、DNS/连接建立（含 TLS）、请求发出、响应头/正文时间、HTTP 状态、重试次数和总耗时。日志不记录提示词、请求体、认证头或完整项目 URL。
+
+使用该传输层的聊天适配器默认每次尝试最多 35 秒、总共最多 2 次，仍受 `LLM_TIMEOUT` 总时限限制。仅连接故障、超时、408/429/部分 5xx 可重试，带随机退避并尊重 `Retry-After`；401 最多触发一次凭据刷新。权限错误、无效请求、无效响应及模型内容拒绝不会反复提交。图片请求单独保持不自动重试。适配器内部已有重试时不要再叠加另一层 SDK 重试。
+
+连接或认证完成前失败，可以定位到相应链路；请求发出后等待响应头的时间包含服务端排队/计算和返回网络路径，单凭客户端日志不能完全分离二者。应与同一接口的轻量请求及 DNS/TCP/TLS 探测对照，而不是把所有超时都解释为 DNS 或服务器内存不足。
+
 ### 4. 配置语音与表情（可选）
 
 ```dotenv
@@ -298,7 +326,7 @@ TTS_TIMEOUT=95
 | `/events` | 查看最近10条自动记忆、ID、时间和来源 |
 | `/forgetevent ID` / `/forgetevent all` | 停用指定或全部自动记忆 |
 | `/reset` | 重置当前角色上下文、手动及自动记忆、摘要和图片描述 |
-| `/draw 1girl, solo, smiling` | 绕过聊天模型，直接调用 ComfyUI |
+| `/draw 1girl, solo, smiling` | 绕过聊天模型，直接调用所选图片服务 |
 | `/proactive on` / `/proactive off` | 开启或关闭私聊主动问候，默认关闭 |
 | `/help` | 查看帮助 |
 
@@ -394,7 +422,7 @@ tests/                        离线回归测试
 python -m unittest discover -s tests -v
 ```
 
-0.3.5 版本已通过155项离线测试，覆盖角色记忆隔离、旧数据迁移、并发队列、事件去重、API Key 配置、多模态消息、用量记录、ComfyUI HTTP 往返、Chirp / Genie 语音适配、发送失败恢复以及管理接口访问限制。测试采用临时数据库、模拟 QQ 和本机 HTTP / ASGI 服务，不会调用真实模型、发送真实 QQ 消息或使用 GPU。
+0.3.6 版本已通过169项离线测试，覆盖角色记忆隔离、旧数据迁移、并发队列、事件去重、API Key 配置、多模态消息、用量记录、ComfyUI / 云图片 HTTP 往返、Chirp / Genie 语音适配、HTTP 阶段诊断和重试边界、发送失败恢复以及管理接口访问限制。测试采用临时数据库、模拟 QQ 和本机 HTTP / ASGI 服务，不会调用真实模型、发送真实 QQ 消息或使用 GPU。
 
 | 现象 | 检查方向 |
 |---|---|

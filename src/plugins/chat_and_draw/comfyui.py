@@ -122,14 +122,23 @@ async def generate_image(dynamic_tags: str) -> bytes | None:
     if not feature_enabled("DRAW_ENABLED"):
         return None
     started = time.monotonic()
-    logger.info("ComfyUI generation requested: timeout={}s", DRAW_TIMEOUT)
+    backend = os.getenv("DRAW_BACKEND", "comfyui").strip().lower()
+    stage = "comfyui" if backend == "comfyui" else "image-api"
+    logger.info("Image generation requested: backend={}, timeout={}s", backend, DRAW_TIMEOUT)
     try:
-        image = await asyncio.wait_for(_generate(dynamic_tags), timeout=DRAW_TIMEOUT)
-        logger.info("ComfyUI task finished: elapsed={:.1f}s, image_bytes={}",
+        if backend == "api":
+            from .image_api import generate_image as generate_api_image
+            await task_update(status="running")
+            image = await asyncio.wait_for(generate_api_image(dynamic_tags), timeout=DRAW_TIMEOUT)
+        elif backend == "comfyui":
+            image = await asyncio.wait_for(_generate(dynamic_tags), timeout=DRAW_TIMEOUT)
+        else:
+            raise ValueError("UNKNOWN_DRAW_BACKEND")
+        logger.info("Image task finished: elapsed={:.1f}s, image_bytes={}",
                     time.monotonic() - started, len(image) if image else 0)
-        await record("comfyui", "completed" if image else "failed", elapsed=round(time.monotonic() - started, 3), bytes=len(image) if image else 0)
+        await record(stage, "completed" if image else "failed", elapsed=round(time.monotonic() - started, 3), bytes=len(image) if image else 0)
         return image
-    except (aiohttp.ClientError, asyncio.TimeoutError, OSError, ValueError, KeyError, TypeError) as exc:
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError, ValueError, KeyError, TypeError, ImportError) as exc:
         logger.warning("Image generation failed: {}", type(exc).__name__)
-        await record("comfyui", "failed", error=type(exc).__name__, elapsed=round(time.monotonic() - started, 3))
+        await record(stage, "failed", error=type(exc).__name__, elapsed=round(time.monotonic() - started, 3))
         return None
