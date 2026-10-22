@@ -11,6 +11,7 @@ from PIL import Image
 
 from .config import ROOT, DRAW_TIMEOUT
 from .http_transport import request_json
+from .drawing import api_image_prompt
 
 _adapters = {}
 _semaphore = asyncio.Semaphore(1)
@@ -29,6 +30,7 @@ def validate_image(data):
 
 async def generate_image(prompt):
     async with _semaphore:
+        prompt = api_image_prompt(prompt)
         filename = os.getenv("DRAW_CLIENT_FACTORY", "").strip()
         if filename:
             path = Path(filename)

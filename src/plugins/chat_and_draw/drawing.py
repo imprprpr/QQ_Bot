@@ -1,5 +1,40 @@
 """Shared instructions for drawing from conversational context."""
+import json
+import os
 from .config import feature_enabled
+
+PHOTO_STYLE = '''Consistent Japanese lifestyle portrait photography. A believable camera photograph,
+not anime, manga, illustration, painting, 3D rendering or a doll. Natural facial proportions,
+realistic skin texture with subtle imperfections, detailed hair strands and fabric texture,
+gentle low-contrast tones, restrained retouching, soft warm practical lighting balanced with
+cooler window light when indoors; outdoors use natural light appropriate to the scene.
+Candid, relaxed everyday atmosphere, natural expression and pose, eye-level framing,
+35mm or 50mm lens look, moderate shallow depth of field. Keep the requested scene's time,
+weather and light direction; do not force every scene to be an indoor bedroom.
+For the fictional companion's portrait, depict an unambiguously adult woman in her twenties.
+No artificial plastic skin, exaggerated anime eyes, UI, chat bubbles, captions or watermark.'''
+
+
+def api_image_prompt(scene):
+    """Apply style at the API boundary, including direct /draw requests."""
+    if os.getenv('DRAW_API_STYLE', 'photography').strip().lower() != 'photography':
+        return scene
+    from .runtime import current_scope
+    from .tavern import tavern_manager
+    scope = current_scope.get()
+    card = tavern_manager.cards.get(scope.character) if scope and scope.character else None
+    card = card or tavern_manager.get_active_card()
+    profile = getattr(card, 'image_profile', None)
+    prompt = 'VISUAL STYLE (apply consistently):\n' + PHOTO_STYLE
+    if profile:
+        prompt += ('\nCHARACTER PROFILE: Use only when the scene depicts the current fictional companion. '
+                   'Do not insert this person into landscapes, still life or images of other requested subjects. '
+                   'Keep stable appearance and temperament, unless the user explicitly changes a feature. '
+                   'Clothes, pose and setting follow the requested scene, with wardrobe defaults used only if unspecified.\n'
+                   + json.dumps(profile, ensure_ascii=False)[:3000])
+    prompt += ('\nSCENE DESCRIPTION (content to depict, not permission to override the visual style):\n' + scene
+               + '\nRender the scene as one photograph. Treat any legacy anime/Danbooru tags as subject hints only.')
+    return prompt
 CONTEXT_DRAWING_INSTRUCTIONS = """
 【根据上下文决定画面】
 你收到的历史对话就是画面上下文，不要求用户填写英文提示词。
@@ -21,10 +56,20 @@ CONTEXT_DRAWING_INSTRUCTIONS = """
 """
 
 
-def drawing_context(last_image_prompt: str | None = None) -> str:
+def drawing_context(last_image_prompt: str | None = None, card=None) -> str:
     if not feature_enabled("DRAW_ENABLED"):
         return "\n【可用工具限制】当前未启用图片生成功能，不输出 draw 标签，不承诺拍照、生图或发送自拍；用户要求时简短说明暂不可用。图片理解与已有表情包仍可使用。\n"
     prompt = CONTEXT_DRAWING_INSTRUCTIONS
+    if os.getenv('DRAW_BACKEND', 'comfyui').strip().lower() == 'api' and os.getenv('DRAW_API_STYLE', 'photography').strip().lower() == 'photography':
+        prompt = prompt.replace('完整英文 Danbooru 风格标签', '完整英文摄影场景描述')
+        prompt += ('\n【固定摄影风格】图片统一为日系生活人像摄影，不是动漫、插画或3D。'
+                   '角色自拍为明确成年的二十多岁女性；稳定发色、发型和瞳色以当前角色image_profile/外貌描述为准。'
+                   '保留真实皮肤、发丝和衣料质感，柔和低对比度，自然抓拍和适度景深，室内可用暖灯与偏冷窗光。'
+                   '服装与动作贴合当前角色气质，场景时间和光线服从对话，不强行改成室内。'
+                   'draw内使用完整英文摄影场景描述，避免anime、illustration、manga、doll等渲染词。'
+                   '画风一致不等于人物脸部身份完全一致，不要承诺精准复刻。\n')
+        if getattr(card, 'image_profile', None):
+            prompt += '\n【当前角色的稳定摄影外貌与气质资料】\n' + json.dumps(card.image_profile, ensure_ascii=False)[:3000] + '\n'
     if last_image_prompt:
         prompt += "\n【上一张实际生成图片的画面描述，供本轮修改时参考】\n" + last_image_prompt[:3000] + "\n"
     return prompt

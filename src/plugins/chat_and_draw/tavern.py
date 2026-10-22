@@ -29,6 +29,7 @@ class TavernCard:
         self.first_mes: str = c_data.get("first_mes", "")
         self.mes_example: str = c_data.get("mes_example", "")
         self.system_prompt: str = c_data.get("system_prompt", "")
+        self.image_profile = c_data.get('image_profile')
 
         # 世界书 (Lorebook / World Info)
         self.character_book: Optional[Dict[str, Any]] = c_data.get("character_book", None)

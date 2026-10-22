@@ -248,7 +248,7 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
         current_system_prompt = SYSTEM_PROMPT + "\n" + DIALOGUE_STYLE
     last_user_text = next((str(item.get("content", "")) for item in reversed(messages_history) if item["role"] == "user"), "")
     current_system_prompt += "\n" + dialogue_context(last_user_text)
-    current_system_prompt += drawing_context(visual_context)
+    current_system_prompt += drawing_context(visual_context, active_card)
     current_system_prompt += sticker_instructions()
     ambient = bool(group_context and group_context.get('mode') == 'ambient')
     if group_context:
