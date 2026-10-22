@@ -3,15 +3,18 @@ import json
 import os
 from .config import feature_enabled
 
-PHOTO_STYLE = '''Consistent Japanese lifestyle portrait photography. A believable camera photograph,
+PHOTO_STYLE = '''Consistent soft Japanese lifestyle beauty portrait photography. A believable camera photograph,
 not anime, manga, illustration, painting, 3D rendering or a doll. Natural facial proportions,
 realistic skin texture with subtle imperfections, detailed hair strands and fabric texture,
 gentle low-contrast tones, restrained retouching, soft warm practical lighting balanced with
 cooler window light when indoors; outdoors use natural light appropriate to the scene.
-Candid, relaxed everyday atmosphere, natural expression and pose, eye-level framing,
+Candid, relaxed everyday atmosphere with a polished contemporary lifestyle editorial finish,
+light natural makeup, delicate refined facial features, a fresh young-adult appearance,
+soft flattering illumination, clean digital detail rather than gritty documentary texture or heavy film grain.
+Natural expression and pose, eye-level framing,
 35mm or 50mm lens look, moderate shallow depth of field. Keep the requested scene's time,
 weather and light direction; do not force every scene to be an indoor bedroom.
-For the fictional companion's portrait, depict an unambiguously adult woman in her twenties.
+For the fictional companion's portrait, depict an unambiguously adult woman in her twenties, aged 22 to 25.
 No artificial plastic skin, exaggerated anime eyes, UI, chat bubbles, captions or watermark.'''
 
 

@@ -49,7 +49,7 @@ class ImageApiTests(unittest.IsolatedAsyncioTestCase):
         old.assert_not_awaited()
         self.assertEqual(self.payload["n"], 1)
         self.assertIn('blue sky', self.payload['prompt'])
-        self.assertIn('Japanese lifestyle portrait photography', self.payload['prompt'])
+        self.assertIn('Japanese lifestyle beauty portrait photography', self.payload['prompt'])
 
     async def test_bad_image_is_rejected(self):
         self.mode = "bad"
