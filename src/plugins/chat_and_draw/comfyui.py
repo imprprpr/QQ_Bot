@@ -8,7 +8,7 @@ from pathlib import Path
 import aiohttp
 from nonebot import logger
 
-from .config import DRAW_POLL_INTERVAL, DRAW_TIMEOUT
+from .config import DRAW_POLL_INTERVAL, DRAW_TIMEOUT, feature_enabled
 from .runtime import record, task_update
 
 COMFYUI_SERVER = os.getenv("COMFYUI_SERVER", "http://127.0.0.1:8188").rstrip("/")
@@ -119,6 +119,8 @@ async def _generate(dynamic_tags):
 
 
 async def generate_image(dynamic_tags: str) -> bytes | None:
+    if not feature_enabled("DRAW_ENABLED"):
+        return None
     started = time.monotonic()
     logger.info("ComfyUI generation requested: timeout={}s", DRAW_TIMEOUT)
     try:

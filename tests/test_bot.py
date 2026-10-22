@@ -25,6 +25,8 @@ nonebot.init(log_level="INFO")
 plugin = importlib.import_module("src.plugins.chat_and_draw")
 # Offline tests must never select an operator's private deployment adapter.
 os.environ["LLM_CLIENT_FACTORY"] = ""
+os.environ["DRAW_ENABLED"] = "true"
+os.environ["TTS_ENABLED"] = "true"
 llm = importlib.import_module("src.plugins.chat_and_draw.llm")
 media = importlib.import_module("src.plugins.chat_and_draw.media")
 comfy = importlib.import_module("src.plugins.chat_and_draw.comfyui")

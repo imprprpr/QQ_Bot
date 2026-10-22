@@ -10,6 +10,10 @@ load_dotenv(ROOT / ".env")
 load_dotenv(ROOT / ".env.local", override=True)
 
 
+def feature_enabled(name: str) -> bool:
+    return os.getenv(name, "true").strip().lower() in {"true", "1", "yes", "on"}
+
+
 def positive_number(name: str, default: float) -> float:
     value = float(os.getenv(name, str(default)))
     if not 0 < value < float("inf"):

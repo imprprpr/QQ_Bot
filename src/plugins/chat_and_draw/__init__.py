@@ -12,7 +12,7 @@ from nonebot import get_bot, get_driver, logger, on_command, on_message
 from nonebot.adapters.onebot.v11 import Bot, Event, Message, MessageSegment
 from nonebot.params import CommandArg
 
-from .config import DATABASE_PATH, MAX_IMAGES
+from .config import DATABASE_PATH, MAX_IMAGES, feature_enabled
 from .sessions import SessionStore, session_key, trim_history
 from .llm import close_clients, get_chat_response, get_image_description, direct_vision
 from .comfyui import generate_image
@@ -72,8 +72,9 @@ async def handle_help():
         "/memory：查看角色记忆\n/remember 内容：记住长期信息\n/forget 序号：删除记忆\n"
         "/events：查看自动记忆及来源\n/forgetevent ID 或 all：删除自动记忆\n"
         "/reset：重置当前会话记忆\n/proactive on 或 off：开启或关闭主动聊天（仅私聊，默认关闭）\n"
-        "/draw 英文标签：直接调用 ComfyUI，不经过聊天模型\n"
-        "可以要求发照片、换装或发送语音。群聊请先 @ 机器人。"
+        + ("/draw 英文标签：直接调用 ComfyUI，不经过聊天模型\n" if feature_enabled("DRAW_ENABLED") else "当前未启用生图。\n")
+        + ("支持发送语音。" if feature_enabled("TTS_ENABLED") else "当前未启用语音。")
+        + "群聊请先 @ 机器人。"
     )
 
 
@@ -227,6 +228,9 @@ FACE_ALIASES = {"害羞": "shy", "开心": "happy", "大哭": "cry", "生气": "
 
 @cmd_draw.handle()
 async def handle_draw(bot: Bot, event: Event, args: Message = CommandArg()):
+    if not feature_enabled("DRAW_ENABLED"):
+        await cmd_draw.send("当前未启用图片生成功能。")
+        return
     tags = args.extract_plain_text().strip()
     if not tags:
         await cmd_draw.send("用法：/draw 1girl, solo, black hair, casual clothes, smiling")
@@ -249,6 +253,8 @@ async def handle_draw(bot: Bot, event: Event, args: Message = CommandArg()):
 
 async def send_reply(reply_text, draw_tags, sticker, voice, *, allow_sticker=True, defer_draw=None,
                      character=None, sticker_context=""):
+    draw_tags = draw_tags if feature_enabled("DRAW_ENABLED") else None
+    voice = voice and feature_enabled("TTS_ENABLED")
     result = DeliveryResult(image_requested=bool(draw_tags))
     if reply_text:
         if voice:

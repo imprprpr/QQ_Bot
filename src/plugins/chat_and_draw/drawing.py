@@ -1,4 +1,5 @@
 """Shared instructions for drawing from conversational context."""
+from .config import feature_enabled
 CONTEXT_DRAWING_INSTRUCTIONS = """
 【根据上下文决定画面】
 你收到的历史对话就是画面上下文，不要求用户填写英文提示词。
@@ -21,6 +22,8 @@ CONTEXT_DRAWING_INSTRUCTIONS = """
 
 
 def drawing_context(last_image_prompt: str | None = None) -> str:
+    if not feature_enabled("DRAW_ENABLED"):
+        return "\n【可用工具限制】当前未启用图片生成功能，不输出 draw 标签，不承诺拍照、生图或发送自拍；用户要求时简短说明暂不可用。图片理解与已有表情包仍可使用。\n"
     prompt = CONTEXT_DRAWING_INSTRUCTIONS
     if last_image_prompt:
         prompt += "\n【上一张实际生成图片的画面描述，供本轮修改时参考】\n" + last_image_prompt[:3000] + "\n"

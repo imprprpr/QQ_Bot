@@ -9,6 +9,7 @@ from nonebot import logger
 from .comfyui import generate_image
 from .delivery import DeliveryResult, deliver_image, try_send
 from .runtime import current_scope, record
+from .config import feature_enabled
 
 _jobs = set()
 _reservations = 0
@@ -24,6 +25,8 @@ class MessageTarget:
 
 async def enqueue_draw(store, bot, event, tags):
     global _reservations
+    if not feature_enabled("DRAW_ENABLED"):
+        return False
     scope = current_scope.get()
     if scope is None:
         raise RuntimeError("Drawing queue requires an operation context")

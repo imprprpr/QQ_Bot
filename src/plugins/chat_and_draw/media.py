@@ -10,7 +10,7 @@ from urllib.parse import unquote, urlsplit
 import aiohttp
 from nonebot import logger
 
-from .config import MAX_IMAGE_BYTES, TTS_CACHE_DIR, TTS_CACHE_TTL, TTS_TIMEOUT
+from .config import MAX_IMAGE_BYTES, TTS_CACHE_DIR, TTS_CACHE_TTL, TTS_TIMEOUT, feature_enabled
 from .incoming_images import normalize_image
 from PIL import Image
 
@@ -36,6 +36,8 @@ def cleanup_tts_cache():
 
 
 async def get_tts_audio(text: str) -> str | None:
+    if not feature_enabled("TTS_ENABLED"):
+        return None
     text = clean_speech(text)
     if not text:
         return None
