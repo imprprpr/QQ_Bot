@@ -11,6 +11,7 @@ from datetime import datetime
 from nonebot import get_bot, get_driver, logger, on_command, on_message
 from nonebot.adapters.onebot.v11 import Bot, Event, Message, MessageSegment
 from nonebot.params import CommandArg
+from nonebot.typing import T_State
 
 from .config import DATABASE_PATH, MAX_IMAGES, feature_enabled
 from .sessions import SessionStore, session_key, trim_history
@@ -26,6 +27,7 @@ from .jobs import enqueue_draw, stop_jobs, recover_jobs
 from .admin import register_admin
 from .memory import EventMemoryStore, prepare as prepare_event_memory
 from .incoming_images import read_image
+from .group_chat import GroupChat
 
 store = SessionStore(DATABASE_PATH)
 
@@ -34,6 +36,32 @@ async def addressed(event: Event) -> bool:
     return event.get_type() == "message" and (
         getattr(event, "message_type", None) == "private" or event.is_tome()
     )
+
+
+async def group_message(event: Event) -> bool:
+    return event.get_type() == 'message' and getattr(event, 'group_id', None) is not None
+
+
+group_observer = on_message(rule=group_message, priority=8, block=False)
+
+
+@group_observer.handle()
+async def observe_group(bot: Bot, event: Event):
+    await GroupChat(store.path).observe(bot, event)
+
+
+async def chat_addressed(bot: Bot, event: Event, state: T_State) -> bool:
+    if event.get_type() != 'message':
+        return False
+    if getattr(event, 'message_type', None) == 'private':
+        return str(event.get_user_id()) != str(bot.self_id)
+    if getattr(event, 'group_id', None) is None:
+        return False
+    context = await GroupChat(store.path).select(bot, event)
+    if context is None:
+        return False
+    state['group_context'] = context
+    return True
 
 
 cmd_cards = on_command("cards", aliases={"角色列表"}, rule=addressed, priority=5, block=True)
@@ -47,7 +75,7 @@ cmd_remember = on_command("remember", aliases={"记住"}, rule=addressed, priori
 cmd_forget = on_command("forget", aliases={"忘记"}, rule=addressed, priority=5, block=True)
 cmd_events = on_command("events", aliases={"共同记忆"}, rule=addressed, priority=5, block=True)
 cmd_forget_event = on_command("forgetevent", aliases={"删除事件"}, rule=addressed, priority=5, block=True)
-chat_handler = on_message(rule=addressed, priority=10, block=True)
+chat_handler = on_message(rule=chat_addressed, priority=10, block=True)
 
 
 def current_card(session):
@@ -74,7 +102,7 @@ async def handle_help():
         "/reset：重置当前会话记忆\n/proactive on 或 off：开启或关闭主动聊天（仅私聊，默认关闭）\n"
         + ("/draw 英文画面描述：直接调用图片服务，不经过聊天模型\n" if feature_enabled("DRAW_ENABLED") else "当前未启用生图。\n")
         + ("支持发送语音。" if feature_enabled("TTS_ENABLED") else "当前未启用语音。")
-        + "群聊请先 @ 机器人。"
+        + "群聊可 @ 我或叫我的昵称；平时会限频参与。群内命令请先 @ 我。"
     )
 
 
@@ -284,7 +312,9 @@ async def send_reply(reply_text, draw_tags, sticker, voice, *, allow_sticker=Tru
 
 
 @chat_handler.handle()
-async def handle_message(bot: Bot, event: Event):
+async def handle_message(bot: Bot, event: Event, state: T_State = None):
+    group_context = (state or {}).get('group_context')
+    ambient = bool(group_context and group_context['mode'] == 'ambient')
     text_parts, image_urls, memory_text_parts = [], [], []
     for seg in event.get_message():
         if seg.type == "text":
@@ -297,9 +327,14 @@ async def handle_message(bot: Bot, event: Event):
             if seg.data.get("summary"):
                 text_parts.append("[QQ提供的表情名称：" + str(seg.data["summary"])[:100] + "]")
     text = "".join(text_parts).strip()
+    if ambient:
+        image_urls = []  # No unsolicited vision, drawing, stickers or TTS spending.
     memory_text = "".join(memory_text_parts).strip()
     if not text and not image_urls:
-        return
+        if group_context and group_context['mode'] == 'mention':
+            text = '[群成员刚刚单独 @ 你，请简短回应。]'
+        else:
+            return
     key = session_key(bot, event)
     async with store.lock(key):
         session = await store.load(key)
@@ -337,7 +372,13 @@ async def handle_message(bot: Bot, event: Event):
             session.history = trim_history(session.history)
             await store.save(session)
             context_args = {"visual_context": session.last_image_prompt} if session.last_image_prompt else {}
-            events = [] if visual_failed else await prepare_event_memory(store.path, session, memory_text, scope.run_id)
+            if group_context:
+                context_args['group_context'] = group_context
+                await record('group-participation', 'completed', mode=group_context['mode'],
+                             context_messages=len(group_context['messages']))
+            if ambient:
+                context_args['silent_failure'] = True
+            events = [] if visual_failed or ambient else await prepare_event_memory(store.path, session, memory_text, scope.run_id)
             if session.memories or session.summary or events:
                 context_args["memory_context"] = {"memories": session.memories, "summary": session.summary}
                 if events:
@@ -347,11 +388,16 @@ async def handle_message(bot: Bot, event: Event):
                 reply, draw, sticker, voice = "这张表情包我这边没识别成功，暂时还读不到内容。", None, None, False
             else:
                 reply, draw, sticker, voice = await get_chat_response(session.history, card=current_card(session), **context_args)
+            if ambient:
+                reply = ' '.join(reply.split())[:160]
+                if reply == '[不参与]':
+                    reply = ''
+                draw, sticker, voice = None, None, False
             explicit_voice = bool(re.search(r"发.*语音|说句话|听听你的声音|录音", text))
             cooldown = max(0, float(os.getenv("STICKER_COOLDOWN", "30")))
             allow_sticker = time.time() - session.last_sticker_time >= cooldown or bool(re.search(r"表情包|动图", text))
             try:
-                delivery = await send_reply(reply, draw, sticker, voice or explicit_voice, allow_sticker=allow_sticker, defer_draw=partial(enqueue_draw, store, bot, event),
+                delivery = await send_reply(reply, draw, sticker, (voice or explicit_voice) and not ambient, allow_sticker=allow_sticker, defer_draw=partial(enqueue_draw, store, bot, event),
                                             character=session.character, sticker_context=text + " " + reply)
             except Exception as exc:
                 log_send_error("reply-pipeline", exc)
@@ -371,6 +417,9 @@ async def handle_message(bot: Bot, event: Event):
             elif reply:  # Compatibility with alternate reply senders.
                 session.history.append({"role": "assistant", "content": reply})
             await store.save(session)
+            if group_context and reply and isinstance(delivery, DeliveryResult) and delivery.text_sent:
+                await asyncio.to_thread(GroupChat(store.path).add, GroupChat.room(bot, event), None,
+                                        'bot:' + str(bot.self_id), reply, time.time())
 
 
 async def run_proactive_once(now=None):
@@ -406,6 +455,7 @@ async def proactive_chat():
             await run_proactive_once()
             await asyncio.to_thread(cleanup_tts_cache)
             await asyncio.to_thread(cleanup_images)
+            await asyncio.to_thread(GroupChat(store.path).cleanup)
         except Exception as exc:
             logger.warning("Proactive cycle failed: {}", type(exc).__name__)
 
@@ -420,6 +470,7 @@ async def start_background_task():
     global _background_task
     if _background_task is None or _background_task.done():
         await store.migrate_legacy()
+        await asyncio.to_thread(GroupChat(store.path).cleanup)
         await recover_jobs(RuntimeStore(store.path))
         _background_task = asyncio.create_task(proactive_chat(), name="proactive-chat")
 
