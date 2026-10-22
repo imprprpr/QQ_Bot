@@ -229,16 +229,32 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
         sender.assert_not_awaited()
         self.assertFalse(result.sticker_sent)
 
-    async def test_face_rejection_does_not_prevent_generation_or_image_delivery(self):
-        async def send(message):
-            if getattr(message, "type", None) == "face":
-                raise ActionFailed(retcode=1200, wording="unsupported face")
+    async def test_missing_sticker_does_not_prevent_generation_or_send_qq_face(self):
         with patch.object(plugin, "generate_image", AsyncMock(return_value=b"png")) as draw, \
-             patch.object(plugin.chat_handler, "send", AsyncMock(side_effect=send)) as sender:
+             patch.object(plugin.chat_handler, "send", AsyncMock()) as sender:
             result = await plugin.send_reply("hello", "solo", "happy", False)
         draw.assert_awaited_once_with("solo")
         self.assertTrue(result.image_sent)
         self.assertEqual(sender.call_args.args[0].type, "image")
+        self.assertEqual([call.args[0].type for call in sender.call_args_list], ["text", "image"])
+
+    async def test_missing_sticker_only_preserves_text(self):
+        with patch.object(plugin.chat_handler, "send", AsyncMock()) as sender:
+            result = await plugin.send_reply("hello", None, "happy", False)
+        sender.assert_awaited_once()
+        self.assertEqual(sender.call_args.args[0].type, "text")
+        self.assertFalse(result.sticker_sent)
+
+    async def test_sticker_send_failure_never_falls_back_to_qq_face(self):
+        async def send(message):
+            if message.type == "image":
+                raise ActionFailed(retcode=1200, wording="image rejected")
+        with patch.object(plugin, "get_sticker", AsyncMock(return_value=b"gif")), \
+             patch.object(plugin.chat_handler, "send", AsyncMock(side_effect=send)) as sender:
+            result = await plugin.send_reply("hello", None, "happy", False)
+        self.assertEqual([call.args[0].type for call in sender.call_args_list], ["text", "image"])
+        self.assertTrue(result.text_sent)
+        self.assertFalse(result.sticker_sent)
 
     async def test_text_and_progress_failure_do_not_prevent_image_delivery(self):
         async def send(message):
@@ -292,10 +308,11 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_combined_reply_sends_all_actions(self):
         with patch.object(plugin, "generate_image", AsyncMock(return_value=b"png")), \
+             patch.object(plugin, "get_sticker", AsyncMock(return_value=b"gif")), \
              patch.object(plugin.chat_handler, "send", AsyncMock()) as send:
             await plugin.send_reply("hello", "1girl", "害羞", False)
         self.assertEqual([c.args[0].type if hasattr(c.args[0], "type") else "text"
-                          for c in send.call_args_list], ["text", "face", "image"])
+                          for c in send.call_args_list], ["text", "image", "image"])
 
     async def test_background_task_shutdown(self):
         await plugin.start_background_task()

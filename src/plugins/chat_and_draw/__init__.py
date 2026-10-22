@@ -221,11 +221,6 @@ async def handle_proactive(bot: Bot, event: Event, args: Message = CommandArg())
         await cmd_proactive.send("主动聊天已开启，服务器本地时间 00:00–06:30 勿扰。" if session.proactive else "主动聊天已关闭。")
 
 
-FACE_MAP = {"cry": 9, "pout": 114, "smug": 276, "facepalm": 105, "laugh": 324,
-            "happy": 212, "stare": 103, "think": 281, "shrug": 277, "shy": 6}
-FACE_ALIASES = {"害羞": "shy", "开心": "happy", "大哭": "cry", "生气": "pout",
-                "思考": "think", "得意": "smug", "笑哭": "laugh", "捂脸": "facepalm"}
-
 @cmd_draw.handle()
 async def handle_draw(bot: Bot, event: Event, args: Message = CommandArg()):
     if not feature_enabled("DRAW_ENABLED"):
@@ -279,9 +274,6 @@ async def send_reply(reply_text, draw_tags, sticker, voice, *, allow_sticker=Tru
             animation = await get_sticker(category, **sticker_args)
             if animation:
                 result.sticker_sent = await try_send(chat_handler, MessageSegment.image(animation), "anime-sticker")
-            if not result.sticker_sent:
-                face_category = "shy" if category == "blush" else category
-                result.sticker_sent = await try_send(chat_handler, MessageSegment.face(FACE_MAP.get(face_category, 212)), "face")
     if draw_tags:
         if defer_draw:
             result.image_queued = await defer_draw(draw_tags)
