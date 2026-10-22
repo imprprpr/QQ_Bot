@@ -253,7 +253,7 @@ async def send_reply(reply_text, draw_tags, sticker, voice, *, allow_sticker=Tru
     result = DeliveryResult(image_requested=bool(draw_tags))
     if reply_text:
         if voice:
-            audio = await get_tts_audio(reply_text)
+            audio = await get_tts_audio(reply_text, character=character)
             if audio:
                 result.text_sent = await try_send(chat_handler, MessageSegment.record(audio), "voice")
             if not result.text_sent:
