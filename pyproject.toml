@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "qq_use_bot"
-version = "0.3.4"
+version = "0.3.5"
 description = "QQ role companion with API-key models, persistent role memories and ComfyUI"
 authors = ["AnimaBot"]
 

@@ -1,6 +1,6 @@
 # AnimaBot · QQ 角色聊天机器人
 
-基于 **NoneBot2 + OneBot V11** 的 QQ 角色陪伴机器人，支持多角色对话、图片理解、ComfyUI 生图、GPT-SoVITS / Google Chirp 3 HD 语音和情景表情包。当前版本 **0.3.4**。
+基于 **NoneBot2 + OneBot V11** 的 QQ 角色陪伴机器人，支持多角色对话、图片理解、ComfyUI 生图、GPT-SoVITS / Genie-TTS / Google Chirp 3 HD 语音和情景表情包。当前版本 **0.3.5**。
 
 每个用户与每个角色分别保留上下文和长期信息；图片任务在后台排队，出图期间仍可聊天。项目带有仅限本机访问的管理页，可查看运行记录、任务结果与模型 token 用量。
 
@@ -13,7 +13,7 @@
 | Web 服务 | FastAPI、Uvicorn | OneBot 接入、本机管理 API 和网页 |
 | 聊天与图片理解 | OpenAI Python SDK、OpenAI 兼容 API | 填写 API Key、Base URL、模型 ID；可共用多模态 API 或配置独立视觉服务 |
 | 图片生成 | ComfyUI HTTP API | 提交 API 工作流、轮询任务、下载生成图片 |
-| 语音合成 | GPT-SoVITS / Google Chirp 3 HD HTTP API | 按角色选择音色，失败时回退文字 |
+| 语音合成 | GPT-SoVITS / Genie-TTS / Google Chirp 3 HD HTTP API | 按角色选择音色，失败时回退文字 |
 | 持久化 | SQLite（Python sqlite3） | 用户/角色状态、消息档案、运行阶段与生图任务 |
 | 表情素材 | 本地图片库、JSON 标签、nekos.best API | 根据角色、情绪和场景筛选表情 |
 | 管理界面 | HTML、CSS、原生 JavaScript | 查看任务、编辑记忆、导入表情与重发图片 |
@@ -244,6 +244,42 @@ TTS_DELIVERY=base64
 
 自有部署也可用 `TTS_HEADERS_FACTORY` 指定可信本地 Python 文件，提供同步 `headers(force=False) -> dict` 方法；文件负责认证，仓库不会读取或分发部署凭据。不要在角色卡、日志或版本库中保存密钥。
 
+#### 用 Genie-TTS 在 CPU 服务器复用 GPT-SoVITS 模型
+
+[Genie-TTS](https://github.com/High-Logic/Genie-TTS) 为兼容版本的 GPT-SoVITS 权重提供转换和 ONNX 推理。先在独立本机环境中转换模型、保存参考音频及准确文本，再上传到服务器；权重、音频和私有配置不要提交到仓库。按上游文档确认具体模型版本，不能把任意 `.pth` 或 `.onnx` 文件当作通用模型。
+
+推荐独立安装到 `/home/ubuntu/genie-tts/.venv`，将 [服务适配器](deploy/genie/server.py) 复制到 `/home/ubuntu/genie-tts/server.py`。固定并记录上游提交版本；运行环境无需安装用于转换的 PyTorch。按上游要求准备 `GenieData`，中文部署应准备并验证中文 RoBERTa 资源。`voices.json` 示例：
+
+```json
+{
+  "default": {
+    "model_dir": "/home/ubuntu/genie-tts/models/my-voice",
+    "language": "zh",
+    "reference_audio": "/home/ubuntu/genie-tts/reference.wav",
+    "reference_text": "参考录音中实际说出的完整内容。"
+  }
+}
+```
+
+当前验证的上游提交为 `d347fd0f8683e9a362b69f59fa0a4799ddb5e828`。该版本的中文变调处理中，“嗯，很好”等输入可能因空韵母触发索引错误；使用独立环境的 Python 执行 `deploy/genie/patch_upstream.py /home/ubuntu/genie-tts/source` 应用范围有限、可重复执行的修复。脚本保留原文件并拒绝未知源码布局。部署测试可在配置好 `GENIE_DATA_DIR` 后执行 `python -m unittest discover -s deploy/genie/tests`。
+
+安装 [anima-genie.service](deploy/systemd/anima-genie.service) 到 `/etc/systemd/system/`，执行 `sudo systemctl daemon-reload` 和 `sudo systemctl enable --now anima-genie`。本服务单实例只加载一个声音，监听 `127.0.0.1:9881`，不需要放行公网端口。默认最多使用 2 个 CPU 核、9GB 内存，推理线程数为 2，进程调度优先级低于机器人；应按服务器实测调整。健康检查为 `GET /health`，语音请求为 `POST /tts`，JSON 请求体为 `{"text":"你好","character":"default"}`，成功返回完整 WAV。
+
+机器人配置示例：
+
+```dotenv
+TTS_ENABLED=true
+TTS_BACKEND=genie
+TTS_API_URL=http://127.0.0.1:9881/tts
+GENIE_CHARACTER=default
+TTS_DELIVERY=base64
+TTS_TIMEOUT=95
+```
+
+可在 `data/tts_characters.json` 中将角色映射到服务中的声音标识，例如 `{"ling":"default","amelia":"default"}`。未映射的角色使用 `GENIE_CHARACTER`。适配服务将推理串行处理，并发忙时返回 429，机器人回退文字；模型异常或超时也会回退文字。服务推理超时会退出，由 systemd 重启，避免后台计算继续占用并与后续请求重叠。更换音色配置或权重后需重启 `anima-genie`。
+
+上线前应在目标 CPU 上检查音频内容、发音、首条及后续生成时间、音频时长、内存峰值和繁忙回退。ONNX 转换成功不代表音质和速度已通过验收。
+
 外部表情使用 [nekos.best](https://docs.nekos.best/getting-started/api-endpoints.html)，无需 API 密钥，但需按服务要求设置实际应用名和联系标识。外部接口只接收类别，不接收对话正文。`STICKER_PROXY` 留空时沿用 `LLM_PROXY`。
 
 本地素材可从管理页导入，并设置情绪、角色文件 ID、适用和避免的关键词。支持 GIF/PNG/JPEG/WebP，每张不超过5MiB，最多500张。无本地匹配时再尝试外部接口；`STICKER_ENABLED=false` 仅关闭外部接口，本地素材仍可使用。
@@ -358,7 +394,7 @@ tests/                        离线回归测试
 python -m unittest discover -s tests -v
 ```
 
-0.3.4 版本已通过150项离线测试，覆盖角色记忆隔离、旧数据迁移、并发队列、事件去重、API Key 配置、多模态消息、用量记录、ComfyUI HTTP 往返、发送失败恢复以及管理接口访问限制。测试采用临时数据库、模拟 QQ 和本机 HTTP / ASGI 服务，不会调用真实模型、发送真实 QQ 消息或使用 GPU。
+0.3.5 版本已通过155项离线测试，覆盖角色记忆隔离、旧数据迁移、并发队列、事件去重、API Key 配置、多模态消息、用量记录、ComfyUI HTTP 往返、Chirp / Genie 语音适配、发送失败恢复以及管理接口访问限制。测试采用临时数据库、模拟 QQ 和本机 HTTP / ASGI 服务，不会调用真实模型、发送真实 QQ 消息或使用 GPU。
 
 | 现象 | 检查方向 |
 |---|---|

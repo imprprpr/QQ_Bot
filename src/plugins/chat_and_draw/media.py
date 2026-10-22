@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import os
+import json
 import re
 import time
 import uuid
@@ -10,7 +11,7 @@ from urllib.parse import unquote, urlsplit
 import aiohttp
 from nonebot import logger
 
-from .config import MAX_IMAGE_BYTES, TTS_CACHE_DIR, TTS_CACHE_TTL, TTS_TIMEOUT, feature_enabled
+from .config import ROOT, MAX_IMAGE_BYTES, TTS_CACHE_DIR, TTS_CACHE_TTL, TTS_TIMEOUT, feature_enabled
 from .incoming_images import normalize_image
 from PIL import Image
 
@@ -55,6 +56,8 @@ async def _tts_audio(text, character):
     if backend == "google-chirp3":
         from .google_tts import synthesize
         data = await synthesize(text, character)
+    elif backend == "genie":
+        data = await _genie_audio(text, character)
     elif backend == "gpt-sovits":
         data = await _sovits_audio(text)
     else:
@@ -70,6 +73,33 @@ async def _tts_audio(text, character):
     if os.getenv("TTS_DELIVERY", "file").lower() == "base64":
         return "base64://" + base64.b64encode(data).decode("ascii")
     return uri
+
+
+async def _genie_audio(text, character):
+    voice = os.getenv("GENIE_CHARACTER", "default")
+    path = Path(os.getenv("TTS_CHARACTERS_FILE", "data/tts_characters.json"))
+    if not path.is_absolute():
+        path = ROOT / path
+    if path.exists():
+        voices = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(voices, dict):
+            raise ValueError("INVALID_TTS_CHARACTERS_FILE")
+        voice = voices.get(character, voice) if character else voice
+    if not isinstance(voice, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", voice):
+        raise ValueError("INVALID_GENIE_CHARACTER")
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=TTS_TIMEOUT)) as client:
+        async with client.post(os.getenv("TTS_API_URL", "http://127.0.0.1:9881/tts"),
+                               json={"text": text, "character": voice}) as response:
+            response.raise_for_status()
+            chunks = bytearray()
+            async for chunk in response.content.iter_chunked(65536):
+                chunks.extend(chunk)
+                if len(chunks) > 8 * 1024 * 1024:
+                    raise ValueError("TTS_AUDIO_TOO_LARGE")
+            data = bytes(chunks)
+            if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+                raise ValueError("INVALID_GENIE_AUDIO")
+            return data
 
 
 async def _sovits_audio(text):

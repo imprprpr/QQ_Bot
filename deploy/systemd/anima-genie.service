@@ -1,0 +1,32 @@
+[Unit]
+Description=AnimaBot Genie-TTS CPU voice service
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/genie-tts
+Environment=PYTHONUNBUFFERED=1
+Environment=GENIE_DATA_DIR=/home/ubuntu/genie-tts/GenieData
+Environment=GENIE_VOICES_FILE=/home/ubuntu/genie-tts/voices.json
+Environment=GENIE_THREADS=2
+Environment=GENIE_TIMEOUT=90
+ExecStart=/home/ubuntu/genie-tts/.venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 9881 --workers 1
+Restart=always
+RestartSec=5s
+TimeoutStopSec=15s
+KillMode=control-group
+MemoryMax=9G
+CPUQuota=200%
+CPUWeight=25
+Nice=5
+TasksMax=128
+UMask=0077
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
