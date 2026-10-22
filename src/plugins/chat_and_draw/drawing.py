@@ -3,19 +3,22 @@ import json
 import os
 from .config import feature_enabled
 
-PHOTO_STYLE = '''Consistent soft Japanese lifestyle beauty portrait photography. A believable camera photograph,
-not anime, manga, illustration, painting, 3D rendering or a doll. Natural facial proportions,
-realistic skin texture with subtle imperfections, detailed hair strands and fabric texture,
-gentle low-contrast tones, restrained retouching, soft warm practical lighting balanced with
-cooler window light when indoors; outdoors use natural light appropriate to the scene.
-Candid, relaxed everyday atmosphere with a polished contemporary lifestyle editorial finish,
-light natural makeup, delicate refined facial features, a fresh young-adult appearance,
-soft flattering illumination, clean digital detail rather than gritty documentary texture or heavy film grain.
-Natural expression and pose, eye-level framing,
-35mm or 50mm lens look, moderate shallow depth of field. Keep the requested scene's time,
+PHOTO_STYLE = '''Consistent soft Japanese lifestyle beauty portrait photography, with an idealized
+beautiful adult J-pop idol photobook aesthetic. A polished, exceptionally pretty fictional adult heroine,
+not an ordinary documentary portrait. Photorealistic with subtle anime-inspired beauty stylization:
+a small softly heart-shaped oval face, delicate balanced features, bright expressive almond eyes
+within believable human proportions, a refined small nose, soft rosy lips, a clear youthful ADULT appearance.
+Luminous fair skin with polished realistic skin texture, flattering beauty retouching,
+clear glossy hair strands, airy face-framing hair, tasteful blush and refined eye makeup.
+Sweet playful charm and a deliberately composed photobook pose; attractive, polished and romantic,
+while keeping human anatomy and photographic rendering, not a drawing or 3D doll.
+Soft diffused beauty lighting, flattering facial highlights, gentle low-contrast pastel tones,
+warm practical lighting balanced with cooler window light indoors; outdoors use soft natural light.
+Clean digital detail, a carefully styled cute everyday outfit when clothing is unspecified,
+85mm portrait lens look, shallow depth of field and creamy background bokeh. Keep the requested scene's time,
 weather and light direction; do not force every scene to be an indoor bedroom.
 For the fictional companion's portrait, depict an unambiguously adult woman in her twenties, aged 22 to 25.
-No artificial plastic skin, exaggerated anime eyes, UI, chat bubbles, captions or watermark.'''
+No heavy film grain, harsh unflattering light, gritty documentary finish, UI, chat bubbles, captions or watermark.'''
 
 
 def api_image_prompt(scene):
@@ -65,9 +68,10 @@ def drawing_context(last_image_prompt: str | None = None, card=None) -> str:
     prompt = CONTEXT_DRAWING_INSTRUCTIONS
     if os.getenv('DRAW_BACKEND', 'comfyui').strip().lower() == 'api' and os.getenv('DRAW_API_STYLE', 'photography').strip().lower() == 'photography':
         prompt = prompt.replace('完整英文 Danbooru 风格标签', '完整英文摄影场景描述')
-        prompt += ('\n【固定摄影风格】图片统一为日系生活人像摄影，不是动漫、插画或3D。'
+        prompt += ('\n【固定摄影风格】图片统一为日系生活人像摄影中的精致美少女写真、成年偶像写真审美，以摄影为底、适度理想化美化，不是普通生活纪实。'
                    '角色自拍为明确成年的二十多岁女性；稳定发色、发型和瞳色以当前角色image_profile/外貌描述为准。'
-                   '保留真实皮肤、发丝和衣料质感，柔和低对比度，自然抓拍和适度景深，室内可用暖灯与偏冷窗光。'
+                   '精致小脸、灵动眼神、清透白皙肤质、细腻妆容与甜美俏皮表情；适度美颜，保留摄影质感。'
+                   '柔光、低对比度、写真构图和背景虚化，室内可用暖灯与偏冷窗光。'
                    '服装与动作贴合当前角色气质，场景时间和光线服从对话，不强行改成室内。'
                    'draw内使用完整英文摄影场景描述，避免anime、illustration、manga、doll等渲染词。'
                    '画风一致不等于人物脸部身份完全一致，不要承诺精准复刻。\n')

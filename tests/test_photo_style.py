@@ -19,6 +19,8 @@ class PhotoStyleTests(unittest.TestCase):
         self.assertIn('natural dark brown eyes',prompt)
         self.assertIn('realistic skin texture',prompt)
         self.assertIn('adult woman in her twenties',prompt)
+        self.assertIn('adult J-pop idol photobook aesthetic',prompt)
+        self.assertIn('softly heart-shaped oval face',prompt)
 
     def test_queued_role_scope_does_not_use_other_active_character(self):
         token=current_scope.set(SimpleNamespace(character='amelia'))
