@@ -95,17 +95,16 @@ class GroupTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await self.policy.select(self.bot,self.event('小灯你好',group=1)))
         self.assertEqual((await self.policy.select(self.bot,self.event('小灯你好',group=2)))['mode'],'nickname')
 
-    async def test_ambient_requires_active_multiple_people_and_topic(self):
-        self.assertIsNone(await self.policy.select(self.bot,self.event()))
-        self.seed()
+    async def test_ordinary_ambient_requires_active_multiple_people(self):
         self.assertIsNone(await self.policy.select(self.bot,self.event('今天不错')))
-        self.assertEqual((await self.policy.select(self.bot,self.event()))['mode'],'ambient')
+        self.seed()
+        self.assertEqual((await self.policy.select(self.bot,self.event('今天不错')))['mode'],'ambient')
         self.assertIsNone(await self.policy.select(self.bot,self.event()))
 
     async def test_probability_zero_and_ambient_disable_make_no_selection(self):
         self.seed()
         os.environ['GROUP_CHAT_PROBABILITY'] = '0'
-        self.assertIsNone(await self.policy.select(self.bot,self.event()))
+        self.assertIsNone(await self.policy.select(self.bot,self.event('今天不错')))
         os.environ.update(GROUP_CHAT_PROBABILITY='1',GROUP_CHAT_AMBIENT_ENABLED='false')
         self.assertIsNone(await self.policy.select(self.bot,self.event()))
 
@@ -148,7 +147,7 @@ class GroupTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(await plugin.chat_addressed(self.bot,self.event('普通消息'),{}))
             model.assert_not_awaited()
             await plugin.handle_message(self.bot,self.event(),state)
-        self.assertEqual(sender.call_args.args,('',None,None,False))
+        sender.assert_not_awaited()
 
     async def test_cleanup_removes_expired_public_context(self):
         self.policy.add('room','old','user','expired',self.now-1900)
@@ -176,3 +175,60 @@ class GroupTests(unittest.IsolatedAsyncioTestCase):
              patch.object(plugin,'send_reply',AsyncMock(return_value=DeliveryResult(text_sent=True))):
             await plugin.handle_message(self.bot,self.event('',addressed=True),{'group_context':{'mode':'mention','messages':[]}})
         model.assert_awaited_once()
+
+    async def test_public_question_without_activity_or_at_is_evaluated(self):
+        os.environ['GROUP_CHAT_PROBABILITY'] = '0'
+        selected = await self.policy.select(self.bot, self.event('这个软件怎么安装？'))
+        self.assertEqual(selected['mode'], 'ambient')
+        self.assertIsNone(await self.policy.select(self.bot, self.event('这个软件怎么安装？')))
+
+    async def test_followup_for_recent_addressee_bypasses_random_gate(self):
+        os.environ.update(GROUP_CHAT_PROBABILITY='0', GROUP_CHAT_FOLLOWUP_COOLDOWN='5')
+        room=self.policy.room(self.bot,self.event())
+        self.policy.add(room,None,'bot:999:to:123','可以试试这个方法',self.now-10)
+        self.assertEqual((await self.policy.select(self.bot,self.event('然后呢')))['mode'],'followup')
+        self.assertIsNone(await self.policy.select(self.bot,self.event('然后呢')))
+
+    async def test_followup_not_granted_to_other_member_or_expired_reply(self):
+        os.environ['GROUP_CHAT_PROBABILITY']='0'
+        room=self.policy.room(self.bot,self.event())
+        self.policy.add(room,None,'bot:999:to:123','你好',self.now-181)
+        self.assertIsNone(await self.policy.select(self.bot,self.event('然后呢')))
+        self.policy.add(room,None,'bot:999:to:456','你好',self.now-10)
+        self.assertIsNone(await self.policy.select(self.bot,self.event('然后呢')))
+
+    async def test_reply_to_another_member_is_not_intercepted(self):
+        event=self.event('这个软件怎么安装？')
+        event.reply=SimpleNamespace(sender=SimpleNamespace(user_id=456))
+        self.assertIsNone(await self.policy.select(self.bot,event))
+
+    async def test_model_decline_does_not_send_or_remember_candidate(self):
+        plugin=test_bot.plugin
+        store=SessionStore(self.path)
+        event=self.event('这个软件怎么安装？')
+        state={'group_context':{'mode':'ambient','messages':[]}}
+        with patch.object(plugin,'store',store), patch.object(plugin,'get_chat_response',AsyncMock(return_value=('[不参与]',None,None,False))), patch.object(plugin,'send_reply',AsyncMock()) as sender:
+            await plugin.handle_message(self.bot,event,state)
+        sender.assert_not_awaited()
+        from src.plugins.chat_and_draw.sessions import session_key
+        self.assertEqual((await store.load(session_key(self.bot,event))).history, [])
+
+    async def test_successful_group_reply_opens_followup_for_its_recipient(self):
+        plugin=test_bot.plugin
+        event=self.event('你好',addressed=True)
+        store=SessionStore(self.path)
+        with patch.object(plugin,'store',store), patch.object(plugin,'get_chat_response',AsyncMock(return_value=('你好呀',None,None,False))), patch.object(plugin,'prepare_event_memory',AsyncMock(return_value=[])), patch.object(plugin,'send_reply',AsyncMock(return_value=DeliveryResult(text_sent=True))):
+            await plugin.handle_message(self.bot,event,{'group_context':{'mode':'mention','messages':[]}})
+        room=self.policy.room(self.bot,event)
+        self.assertTrue(self.policy.is_followup(room,'123',self.now))
+        self.assertFalse(self.policy.is_followup(room,'456',self.now))
+
+    async def test_followup_uses_the_same_silent_single_text_pipeline(self):
+        plugin=test_bot.plugin
+        event=self.event('然后呢')
+        model=AsyncMock(return_value=('可以再试一下','solo','happy',True))
+        with patch.object(plugin,'store',SessionStore(self.path)), patch.object(plugin,'get_chat_response',model), patch.object(plugin,'prepare_event_memory',AsyncMock()) as memory, patch.object(plugin,'send_reply',AsyncMock(return_value=DeliveryResult(text_sent=True))) as sender:
+            await plugin.handle_message(self.bot,event,{'group_context':{'mode':'followup','messages':[]}})
+        self.assertTrue(model.await_args.kwargs['silent_failure'])
+        memory.assert_not_awaited()
+        self.assertEqual(sender.await_args.args,('可以再试一下',None,None,False))

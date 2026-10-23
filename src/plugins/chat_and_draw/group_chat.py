@@ -89,47 +89,66 @@ class GroupChat:
         reply = getattr(event, 'reply', None)
         replying = str(getattr(getattr(reply, 'sender', None), 'user_id', '')) == str(bot.self_id)
         if mentioned or replying or (original is None and event.is_tome()):
-            return await asyncio.to_thread(self.reserve, room, 'mention', time.time())
+            result = await asyncio.to_thread(self.reserve, room, 'mention', time.time())
+            result['current_speaker'] = str(event.get_user_id())
+            return result
         if not self.allowed(event) or not text.strip() or text.lstrip().startswith(('/', '／')):
             return None
         # A message addressed to someone else is not an invitation to interrupt.
         if any(segment.type == 'at' for segment in message):
             return None
+        if reply is not None and getattr(getattr(reply, 'sender', None), 'user_id', None) is not None:
+            return None
         aliases = [unicodedata.normalize('NFKC', value.strip()) for value in
                    os.getenv('GROUP_CHAT_NICKNAMES', '小灯,玲').split(',') if value.strip()]
         named = any((re.search(r'(?<!\w)' + re.escape(alias) + r'(?!\w)', text, re.I)
                      if alias.isascii() else alias in text) for alias in aliases)
-        mode = 'nickname' if named else 'ambient'
-        if mode == 'ambient':
+        now = time.time()
+        followup = not named and await asyncio.to_thread(self.is_followup, room, event.get_user_id(), now)
+        mode = 'nickname' if named else ('followup' if followup else 'ambient')
+        question = bool(re.search(r'[?？]|怎么|为什么|为啥|如何|能不能|有没有|有谁|谁知道|求助|求推荐|怎么办|有人吗|什么建议|推荐一下|能帮忙', text))
+        if mode in {'ambient', 'followup'}:
             if not feature_enabled('GROUP_CHAT_AMBIENT_ENABLED'):
                 return None
-            if not re.search(r'大家|你们|有没有人|有人知道|求推荐|求助|怎么办|好无聊|聊点|有人吗', text):
-                return None
-            if random.random() >= min(1, number('GROUP_CHAT_PROBABILITY', .12)):
-                return None
-        return await asyncio.to_thread(self.reserve, room, mode, time.time())
+            # Questions and short follow-ups are evaluated deliberately; ordinary
+            # public conversation is sampled before any model call.
+            if mode == 'ambient' and not question:
+                if len(text.strip()) < 4 or random.random() >= min(1, number('GROUP_CHAT_PROBABILITY', .25)):
+                    return None
+        result = await asyncio.to_thread(self.reserve, room, mode, now, question)
+        if result is not None:
+            result['current_speaker'] = str(event.get_user_id())
+        return result
 
-    def reserve(self, room, mode, now):
+    def is_followup(self, room, user, now):
+        with self.connect() as conn:
+            last = conn.execute("SELECT speaker,created FROM group_chat_lines WHERE room=? AND speaker LIKE 'bot:%' ORDER BY id DESC LIMIT 1", (room,)).fetchone()
+            return bool(last and last[0].endswith(':to:' + str(user))
+                        and now - last[1] <= number('GROUP_CHAT_FOLLOWUP_WINDOW', 180))
+
+    def reserve(self, room, mode, now, question=False):
         """Reserve before generation; failed calls still count, including after restarts."""
         with self.connect() as conn:
             lines = conn.execute('SELECT speaker,text,created FROM group_chat_lines WHERE room=? AND created>=? '
                                  'ORDER BY id DESC LIMIT 12', (room, now - 1800)).fetchall()[::-1]
             if mode != 'mention':
                 last = conn.execute('SELECT last_attempt FROM group_chat_limits WHERE room=?', (room,)).fetchone()
-                cooldown = number('GROUP_CHAT_COOLDOWN', 300) if mode == 'ambient' else number('GROUP_CHAT_NICKNAME_COOLDOWN', 45)
+                cooldown = (number('GROUP_CHAT_COOLDOWN', 180) if mode == 'ambient' else
+                            number('GROUP_CHAT_FOLLOWUP_COOLDOWN', 5) if mode == 'followup' else
+                            number('GROUP_CHAT_NICKNAME_COOLDOWN', 45))
                 if last and now - last[0] < cooldown:
                     return None
                 hourly = conn.execute('SELECT COUNT(*) FROM group_chat_calls WHERE room=? AND created>?', (room, now - 3600)).fetchone()[0]
                 global_hourly = conn.execute('SELECT COUNT(*) FROM group_chat_calls WHERE created>?', (now - 3600,)).fetchone()[0]
-                if hourly >= number('GROUP_CHAT_HOURLY_LIMIT', 6) or global_hourly >= number('GROUP_CHAT_GLOBAL_HOURLY_LIMIT', 20):
+                if hourly >= number('GROUP_CHAT_HOURLY_LIMIT', 12) or global_hourly >= number('GROUP_CHAT_GLOBAL_HOURLY_LIMIT', 40):
                     return None
                 if mode == 'ambient':
                     recent = [line for line in lines if line[2] >= now - 300 and not line[0].startswith('bot:')]
                     counts = conn.execute("SELECT SUM(created>?),COUNT(*) FROM group_chat_calls WHERE room=? AND mode='ambient' AND created>?",
                                           (now - 3600, room, now - 86400)).fetchone()
-                    if (len(recent) < 4 or len({line[0].split(':', 1)[0] for line in recent}) < 2
-                            or (counts[0] or 0) >= number('GROUP_CHAT_AMBIENT_HOURLY_LIMIT', 2)
-                            or counts[1] >= number('GROUP_CHAT_AMBIENT_DAILY_LIMIT', 8)):
+                    if ((not question and (len(recent) < 4 or len({line[0].split(':', 1)[0] for line in recent}) < 2))
+                            or (counts[0] or 0) >= number('GROUP_CHAT_AMBIENT_HOURLY_LIMIT', 4)
+                            or counts[1] >= number('GROUP_CHAT_AMBIENT_DAILY_LIMIT', 12)):
                         return None
                 conn.execute('INSERT INTO group_chat_calls VALUES(?,?,?)', (room, mode, now))
             conn.execute('INSERT OR REPLACE INTO group_chat_limits VALUES(?,?)', (room, now))

@@ -57,7 +57,7 @@ class ChatFlow:
 
     async def handle_message(self, bot: Bot, event: Event, state: T_State=None):
         group_context = (state or {}).get('group_context')
-        ambient = bool(group_context and group_context['mode'] == 'ambient')
+        ambient = bool(group_context and group_context['mode'] in {'ambient', 'followup'})
         (text_parts, image_urls, memory_text_parts) = ([], [], [])
         for seg in event.get_message():
             if seg.type == 'text':
@@ -112,7 +112,8 @@ class ChatFlow:
                     user_message['images'] = attachments
                 session.history.append(user_message)
                 session.history = trim_history(session.history)
-                await self.store.save(session)
+                if not ambient:
+                    await self.store.save(session)
                 context_args = {'visual_context': session.last_image_prompt} if session.last_image_prompt else {}
                 if group_context:
                     context_args['group_context'] = group_context
@@ -133,6 +134,8 @@ class ChatFlow:
                     if reply == '[不参与]':
                         reply = ''
                     (draw, sticker, voice) = (None, None, False)
+                    if not reply:
+                        return
                 service_notice = isinstance(reply, ServiceNotice)
                 explicit_voice = bool(re.search('发.*语音|说句话|听听你的声音|录音', text))
                 cooldown = max(0, float(os.getenv('STICKER_COOLDOWN', '30')))
@@ -158,4 +161,4 @@ class ChatFlow:
                     session.history.append({'role': 'assistant', 'content': reply})
                 await self.store.save(session)
                 if group_context and reply and isinstance(delivery, DeliveryResult) and delivery.text_sent:
-                    await asyncio.to_thread(self.group_chat.add, GroupChat.room(bot, event), None, 'bot:' + str(bot.self_id), reply, time.time())
+                    await asyncio.to_thread(self.group_chat.add, GroupChat.room(bot, event), None, 'bot:' + str(bot.self_id) + ':to:' + str(event.get_user_id()), reply, time.time())
