@@ -6,11 +6,11 @@ import os
 from pathlib import Path
 import random
 import re
-import sqlite3
 import time
 import unicodedata
 
 from .config import feature_enabled
+from .database import database
 
 
 def number(name, default, minimum=0):
@@ -20,12 +20,11 @@ def number(name, default, minimum=0):
 class GroupChat:
     def __init__(self, path):
         self.path = Path(path)
+        self.database = database(path)
 
     @contextmanager
     def connect(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.path, timeout=10)
-        conn.executescript('''
+        self.database.initialize('group-chat-v1', '''
         CREATE TABLE IF NOT EXISTS group_chat_lines (
           id INTEGER PRIMARY KEY, room TEXT, message_id TEXT, speaker TEXT, text TEXT, created REAL,
           UNIQUE(room,message_id));
@@ -34,11 +33,8 @@ class GroupChat:
         CREATE TABLE IF NOT EXISTS group_chat_calls (room TEXT, mode TEXT, created REAL);
         CREATE INDEX IF NOT EXISTS group_chat_call_time ON group_chat_calls(created);
         ''')
-        try:
-            with conn:
-                yield conn
-        finally:
-            conn.close()
+        with self.database.transaction() as conn:
+            yield conn
 
     @staticmethod
     def room(bot, event):
@@ -116,7 +112,6 @@ class GroupChat:
     def reserve(self, room, mode, now):
         """Reserve before generation; failed calls still count, including after restarts."""
         with self.connect() as conn:
-            conn.execute('BEGIN IMMEDIATE')
             lines = conn.execute('SELECT speaker,text,created FROM group_chat_lines WHERE room=? AND created>=? '
                                  'ORDER BY id DESC LIMIT 12', (room, now - 1800)).fetchall()[::-1]
             if mode != 'mention':

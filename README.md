@@ -1,6 +1,6 @@
 # AnimaBot · QQ 角色聊天机器人
 
-基于 **NoneBot2 + OneBot V11** 的 QQ 角色陪伴机器人，支持多角色对话、图片理解、ComfyUI / 云 API 生图、GPT-SoVITS / Genie-TTS / Google Chirp 3 HD 语音和情景表情包。当前版本 **0.3.9**。
+基于 **NoneBot2 + OneBot V11** 的 QQ 角色陪伴机器人，支持多角色对话、图片理解、ComfyUI / 云 API 生图、GPT-SoVITS / Genie-TTS / Google Chirp 3 HD 语音和情景表情包。当前版本 **0.4.0**。
 
 每个用户与每个角色分别保留上下文和长期信息；图片任务在后台排队，出图期间仍可聊天。项目带有仅限本机访问的管理页，可查看运行记录、任务结果与模型 token 用量。
 
@@ -438,7 +438,7 @@ tests/                        离线回归测试
 python -m unittest discover -s tests -v
 ```
 
-0.3.9 版本已通过191项离线测试，覆盖角色记忆隔离、旧数据迁移、并发队列、事件去重、API Key 配置、多模态消息、用量记录、ComfyUI / 云图片 HTTP 往返、摄影风格与角色外貌选择、Chirp / Genie 语音适配、HTTP 阶段诊断和重试边界、群聊上下文、并发限频、重启额度持久化、发送失败恢复以及管理接口访问限制。测试采用临时数据库、模拟 QQ 和本机 HTTP / ASGI 服务，不会调用真实模型、发送真实 QQ 消息或使用 GPU。
+0.4.0 版本已通过198项离线测试，覆盖角色记忆隔离、旧数据迁移、并发队列、事件去重、API Key 配置、多模态消息、用量记录、ComfyUI / 云图片 HTTP 往返、摄影风格与角色外貌选择、Chirp / Genie 语音适配、HTTP 阶段诊断和重试边界、群聊上下文、并发限频、重启额度持久化、发送失败恢复以及管理接口访问限制。测试采用临时数据库、模拟 QQ 和本机 HTTP / ASGI 服务，不会调用真实模型、发送真实 QQ 消息或使用 GPU。
 
 | 现象 | 检查方向 |
 |---|---|
@@ -484,3 +484,6 @@ sudo systemctl restart anima-bot
 sudo systemctl stop anima-bot
 sudo journalctl -u anima-bot -f
 ```
+
+
+编排模块、SQLite事务协调及旧数据迁移说明见[架构与持久化边界](ARCHITECTURE.md)。

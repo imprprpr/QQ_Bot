@@ -65,11 +65,13 @@ class EventMemoryStore:
     def __init__(self, path):
         self.runtime = RuntimeStore(path)
 
+    def initialize(self):
+        self.runtime.database.initialize('event-memory-v1', SCHEMA + ';\nCREATE INDEX IF NOT EXISTS event_memory_scope ON event_memories(session_key,character,status,mentioned_at);')
+
     async def call(self, fn):
         def ready(conn):
-            conn.execute(SCHEMA)
-            conn.execute("CREATE INDEX IF NOT EXISTS event_memory_scope ON event_memories(session_key,character,status,mentioned_at)")
             return fn(conn)
+        await asyncio.to_thread(self.initialize)
         return await self.runtime.call(ready)
 
     async def list(self, key, character):
@@ -90,7 +92,6 @@ class EventMemoryStore:
     async def apply(self, key, character, run_id, source, proposals, now=None):
         now = time.time() if now is None else now
         def write(conn):
-            conn.execute("BEGIN IMMEDIATE")
             changes = []
             for item in proposals[:4]:
                 if not isinstance(item, dict):

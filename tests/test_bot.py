@@ -22,7 +22,7 @@ from nonebot.adapters.onebot.v11.exception import ActionFailed
 # All model requests below are mocked or served by loopback HTTP fixtures.
 os.environ["EVENT_MEMORY_ENABLED"] = "false"  # New tests explicitly mock the extractor when enabling it.
 nonebot.init(log_level="INFO")
-plugin = importlib.import_module("src.plugins.chat_and_draw")
+plugin = importlib.import_module("src.plugins.chat_and_draw").app
 # Offline tests must never select an operator's private deployment adapter.
 os.environ["LLM_CLIENT_FACTORY"] = ""
 os.environ["DRAW_ENABLED"] = "true"

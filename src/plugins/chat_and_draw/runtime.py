@@ -11,6 +11,7 @@ import uuid
 from nonebot import logger
 
 from .config import ROOT
+from .database import database
 
 ARTIFACT_DIR = ROOT / "data" / "artifacts"
 
@@ -39,18 +40,16 @@ CREATE INDEX IF NOT EXISTS task_run ON tasks(run_id);
 class RuntimeStore:
     def __init__(self, path):
         self.path = Path(path)
+        self.database = database(path)
+
+    def initialize(self):
+        self.database.initialize('runtime-v1', SCHEMA)
 
     async def call(self, fn):
         def work():
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            conn = sqlite3.connect(self.path, timeout=15)
-            conn.row_factory = sqlite3.Row
-            try:
-                conn.executescript(SCHEMA)
-                with conn:
-                    return fn(conn)
-            finally:
-                conn.close()
+            self.initialize()
+            with self.database.transaction() as conn:
+                return fn(conn)
         return await asyncio.to_thread(work)
 
     async def start(self, key, character, text, external_id=None):
