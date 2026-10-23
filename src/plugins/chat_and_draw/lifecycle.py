@@ -8,6 +8,7 @@ from nonebot import logger
 from .media import cleanup_tts_cache
 from .image_history import cleanup_images
 from .memory import EventMemoryStore
+from .qq_text import qq_plain_text
 
 class BackgroundLifecycle:
 
@@ -40,7 +41,7 @@ class BackgroundLifecycle:
                     '仅文字，不输出任何工具标签；不声称知道用户正在做什么，不催促或责怪对方回复，也不编造网络故障。]'})
                 (reply, _, _, _) = await self.get_chat_response(history, card=self.current_card(session),
                     silent_failure=True, memory_context={'memories': session.memories, 'summary': session.summary})
-                reply = ' '.join(reply.split())[:160]
+                reply = ' '.join(qq_plain_text(reply).split())[:160]
                 if not reply:
                     continue
                 async with self.store.lock(key):

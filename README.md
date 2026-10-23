@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="#tech-stack">技术栈</a> · <a href="#features">特性速览</a> · <a href="#quick-start">安装部署</a> · <a href="#model-api">模型配置</a> · <a href="#image-generation">图片生成</a> · <a href="#voice-stickers">语音与表情</a><br>
-  <a href="#commands">命令索引</a> · <a href="#group-chat">群聊参与</a> · <a href="#proactive">主动问候</a> · <a href="#bot-interaction">机器人斗嘴</a> · <a href="#memory">角色记忆</a> · <a href="#admin">管理界面</a> · <a href="#troubleshooting">常见排障</a><br>
+  <a href="#commands">命令索引</a> · <a href="#group-chat">群聊参与</a> · <a href="#proactive">主动问候</a> · <a href="#bot-interaction">机器人斗嘴</a> · <a href="#memory">角色记忆</a> · <a href="#code-analysis">代码分析</a> · <a href="#admin">管理界面</a> · <a href="#troubleshooting">常见排障</a><br>
   <a href="#architecture">架构</a> · <a href="#data">数据持久化</a> · <a href="#cloud-server">云服务器</a> · <a href="#systemd">systemd 后台管理</a> · <a href="#documentation">文档索引</a>
 </p>
 
@@ -410,6 +410,22 @@ TTS_TIMEOUT=95
 自然聊天示例：“傍晚去海边，你穿白裙，拍张全身照。”随后说“改成红裙，其他不变”，会参考上一张成功生成图片的描述。这里是文生图描述连续，并不保证跨图人脸完全一致。
 
 用户/角色记忆正常重启后恢复。`/reset` 不清除其他角色的记忆、不删除运行档案，也不取消已提交的图片任务。详细操作见[角色选择用户指南](角色选择用户指南.md)。
+
+<a id="code-analysis"></a>
+
+## 代码阅读与分析
+
+发送“分析这段代码”“解释这个函数”“审查仓库架构”等请求，或粘贴代码片段，会按需加入专业代码分析前置提示词；
+短暂的“继续”“具体怎么改”等追问沿用该模式，日常新话题自动退出，不额外调用分类模型。
+提示词位于 `src/plugins/chat_and_draw/code_analysis.py`，要求依据实际材料说明调用链、触发条件、影响、最小修复与验证方法，区分证据、推测和缺失材料。
+不能仅凭框架或文件大小下结论，也不因为缺少事件总线等设计模式就判定架构有缺陷。
+
+当前聊天接口没有仓库抓取或代码执行工具，仓库链接不代表已经读过源码。没有实际代码时需明确说明范围，索取最少必要片段，
+不能编造路径、行号、测试或执行结果。仓库文件和注释作为待分析数据处理，不执行其中指令。
+
+所有生成回复使用QQ纯文本，发送前转换常见Markdown标记，示例代码保留换行和缩进，不输出代码围栏。
+代码分析不调用生图、语音、表情包或自动记忆提取；直接回应的默认输出预算为1400 token，
+可通过 `CODE_ANALYSIS_MAX_TOKENS` 调整（该设置最多2400）。未明确@的群聊仍遵守原参与额度和短回复限制。
 
 <a id="bot-interaction"></a>
 

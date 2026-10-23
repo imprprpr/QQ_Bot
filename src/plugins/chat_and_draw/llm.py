@@ -17,6 +17,8 @@ from .runtime import record
 from .config import HISTORY_IMAGES
 from .image_history import load_image
 from .conversation import DIALOGUE_STYLE, dialogue_context
+from .code_analysis import QQ_TEXT_PROMPT, CODE_ANALYSIS_PROMPT, needs_code_analysis
+from .qq_text import qq_plain_text
 from .incoming_images import normalize_image
 from .local_client import local_client
 from .config import feature_enabled
@@ -153,7 +155,7 @@ def parse_reply(reply_text):
     voice = bool(re.search(r"<voice\s*>", reply_text, re.I))
     text = re.sub(r"<draw:\s*.*?>|<sticker:\s*.*?>|<voice\s*>", "",
                   reply_text, flags=re.I | re.S).strip()
-    return (text, draw.group(1).strip() or None if draw and feature_enabled("DRAW_ENABLED") else None,
+    return (qq_plain_text(text), draw.group(1).strip() or None if draw and feature_enabled("DRAW_ENABLED") else None,
             sticker.group(1).strip().lower() or None if sticker else None,
             voice and feature_enabled("TTS_ENABLED"))
 
@@ -274,20 +276,36 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
     if not feature_enabled("TTS_ENABLED"):
         current_system_prompt += "\n【可用工具限制】当前未启用语音合成，不输出 voice 标签，不承诺录音或发送语音；需要时用文字回复。\n"
 
+    code_analysis = needs_code_analysis(messages_history) and not (group_context and group_context.get('mode') == 'bot-interaction')
+    current_system_prompt += "\n" + QQ_TEXT_PROMPT
+    if code_analysis:
+        current_system_prompt += "\n" + CODE_ANALYSIS_PROMPT
+    output_budget = int(os.getenv("LLM_MAX_TOKENS", "500"))
+    if code_analysis:
+        output_budget = max(output_budget, min(2400, max(500, int(os.getenv("CODE_ANALYSIS_MAX_TOKENS", "1400")))))
+    if ambient:
+        output_budget = min(180, output_budget)
     started = time.monotonic()
     logger.info("Chat request started: provider={}, model={}", provider_name(), MODEL)
     try:
         await record("model", "started", provider=provider_name(), model=MODEL)
+        if code_analysis:
+            await record("code-analysis", "started", repository_tools=False, output_format="qq-plain-text")
         messages = build_messages(current_system_prompt, messages_history)
         response = await asyncio.wait_for(get_client().chat.completions.create(
             model=MODEL,
             messages=messages,
-            max_tokens=min(180, int(os.getenv("LLM_MAX_TOKENS", "500"))) if ambient else int(os.getenv("LLM_MAX_TOKENS", "500")),
-            temperature=float(os.getenv("LLM_TEMPERATURE", "0.7")),
+            max_tokens=output_budget,
+            temperature=min(.3, float(os.getenv("LLM_TEMPERATURE", "0.7"))) if code_analysis else float(os.getenv("LLM_TEMPERATURE", "0.7")),
             extra_body=extra_parameters()
         ), timeout=LLM_TIMEOUT)
         await record_usage(response, MODEL)
         await record("model", "completed", elapsed=round(time.monotonic() - started, 3))
+        if code_analysis:
+            content = response_content(response)
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError("EMPTY_CODE_ANALYSIS")
+            return qq_plain_text(content), None, None, False
         return parse_reply(response_content(response))
     except asyncio.TimeoutError:
         await record("model", "failed", error="TimeoutError", elapsed=round(time.monotonic() - started, 3))

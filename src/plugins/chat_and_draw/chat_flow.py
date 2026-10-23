@@ -9,6 +9,8 @@ from nonebot import logger
 from nonebot.adapters.onebot.v11 import Bot, Event, MessageSegment
 from nonebot.typing import T_State
 from .llm import ServiceNotice
+from .code_analysis import needs_code_analysis
+from .qq_text import qq_plain_text, qq_chunks
 from .config import MAX_IMAGES, feature_enabled
 from .sessions import session_key, trim_history
 from .image_history import save_image
@@ -23,6 +25,7 @@ class ChatFlow:
     async def send_reply(self, reply_text, draw_tags, sticker, voice, *, allow_sticker=True, defer_draw=None, character=None, sticker_context=''):
         draw_tags = draw_tags if feature_enabled('DRAW_ENABLED') else None
         voice = voice and feature_enabled('TTS_ENABLED')
+        reply_text = qq_plain_text(reply_text)
         result = DeliveryResult(image_requested=bool(draw_tags))
         if reply_text:
             if voice:
@@ -32,9 +35,7 @@ class ChatFlow:
                 if not result.text_sent:
                     result.text_sent = await self.try_send(self.chat_handler, MessageSegment.text(reply_text), 'voice-text-fallback')
             else:
-                parts = [p.strip() for p in reply_text.splitlines() if p.strip()]
-                if len(parts) > 3:
-                    parts = parts[:2] + ['\n'.join(parts[2:])]
+                parts = qq_chunks(reply_text)
                 for (index, part) in enumerate(parts):
                     if index:
                         await asyncio.sleep(random.uniform(0.5, 1.2))
@@ -110,6 +111,7 @@ class ChatFlow:
                         visual_failed = description.startswith('[视觉识别失败')
                         combined_text += f'\n[用户发送的图片描述：{description}]'
                     await record('image-input', 'failed' if visual_failed else 'completed', received=len(images), readable=not visual_failed)
+                code_analysis = needs_code_analysis(session.history + [{'role': 'user', 'content': combined_text}])
                 user_message = {'role': 'user', 'content': combined_text}
                 if attachments:
                     user_message['images'] = attachments
@@ -123,8 +125,8 @@ class ChatFlow:
                     await record('group-participation', 'completed', mode=group_context['mode'], context_messages=len(group_context['messages']))
                 if ambient:
                     context_args['silent_failure'] = True
-                events = [] if visual_failed or ambient else await self.prepare_event_memory(self.store.path, session, memory_text, scope.run_id)
-                if session.memories or session.summary or events:
+                events = [] if visual_failed or ambient or code_analysis else await self.prepare_event_memory(self.store.path, session, memory_text, scope.run_id)
+                if not code_analysis and (session.memories or session.summary or events):
                     context_args['memory_context'] = {'memories': session.memories, 'summary': session.summary}
                     if events:
                         context_args['memory_context']['events'] = events
@@ -133,18 +135,20 @@ class ChatFlow:
                 else:
                     (reply, draw, sticker, voice) = await self.get_chat_response(session.history, card=self.current_card(session), **context_args)
                 if ambient:
-                    reply = ' '.join(reply.split())[:160]
+                    reply = reply[:160] if code_analysis else ' '.join(reply.split())[:160]
                     if reply == '[不参与]':
                         reply = ''
                     (draw, sticker, voice) = (None, None, False)
                     if not reply:
                         return
                 service_notice = isinstance(reply, ServiceNotice)
+                if code_analysis:
+                    draw, sticker, voice = None, None, False
                 explicit_voice = bool(re.search('发.*语音|说句话|听听你的声音|录音', text))
                 cooldown = max(0, float(os.getenv('STICKER_COOLDOWN', '30')))
                 allow_sticker = time.time() - session.last_sticker_time >= cooldown or bool(re.search('表情包|动图', text))
                 try:
-                    delivery = await self.send_reply(reply, draw, sticker, (voice or explicit_voice) and (not ambient) and (not service_notice), allow_sticker=allow_sticker, defer_draw=partial(self.enqueue_draw, self.store, bot, event), character=session.character, sticker_context=text + ' ' + reply)
+                    delivery = await self.send_reply(reply, draw, sticker, (voice or explicit_voice) and (not ambient) and (not service_notice) and (not code_analysis), allow_sticker=allow_sticker, defer_draw=partial(self.enqueue_draw, self.store, bot, event), character=session.character, sticker_context=text + ' ' + reply)
                 except Exception as exc:
                     log_send_error('reply-pipeline', exc)
                     await record('reply-pipeline', 'failed', error=type(exc).__name__)

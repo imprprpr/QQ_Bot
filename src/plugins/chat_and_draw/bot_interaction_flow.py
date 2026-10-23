@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import MessageSegment
 from .bot_interaction import ids
 from .group_chat import number
 from .llm import ServiceNotice
+from .qq_text import qq_plain_text
 from .runtime import operation, record
 from .tavern import tavern_manager
 
@@ -32,7 +33,7 @@ class BotInteractionFlow:
                     group_context=context, silent_failure=True)
                 if isinstance(reply, ServiceNotice):
                     return
-                reply = ' '.join(reply.split())[:120]
+                reply = ' '.join(qq_plain_text(reply).split())[:120]
                 if not reply or reply.strip('。.!！ ') == '[不参与]':
                     return
                 if not await asyncio.to_thread(policy.valid, context, time.time()):
