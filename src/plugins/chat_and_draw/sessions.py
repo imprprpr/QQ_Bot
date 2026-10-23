@@ -48,13 +48,23 @@ class Session:
     history: list[dict] = field(default_factory=list)
     memories: list[str] = field(default_factory=list)
     summary: str = ''
-    proactive: bool = False
+    proactive: bool = True
+    proactive_default_applied: bool = True
     last_interaction: float = 0
     next_proactive: float = 0
 
+    proactive_day: str = ""
+    proactive_attempts: int = 0
+    proactive_unanswered: bool = False
+
     def touch(self):
+        self.proactive_unanswered = False
         self.last_interaction = time.time()
-        self.next_proactive = self.last_interaction + random.uniform(3600, 7200)
+        if self.proactive:
+            from .proactive import local_now, next_time
+            self.next_proactive = next_time(local_now(), self.last_interaction)
+        else:
+            self.next_proactive = 0
 
 class SessionStore:
 
@@ -97,13 +107,26 @@ class SessionStore:
         conn.execute('INSERT OR REPLACE INTO sessions(key,data) VALUES (?,?)', (session.key, json.dumps(self._metadata(session), ensure_ascii=False)))
         conn.execute('INSERT OR REPLACE INTO role_states VALUES (?,?,?,?)', (session.key, session.character, json.dumps(self._role_data(session), ensure_ascii=False), time.time()))
 
+    @staticmethod
+    def _decode(data):
+        values = json.loads(data)
+        if not values.get('proactive_default_applied', False):
+            # Old versions stored default-off and explicit-off identically.
+            # Apply the newly requested default once; subsequent off commands persist.
+            values['proactive'] = bool(values.get('private', True))
+            values['proactive_default_applied'] = True
+            if values['proactive'] and not values.get('next_proactive'):
+                from .proactive import local_now, next_time
+                values['next_proactive'] = next_time(local_now(), values.get('last_interaction', 0))
+        return Session(**values)
+
     async def load(self, key: str) -> Session:
 
         def read():
             self.initialize()
             with self.database.transaction() as conn:
                 row = conn.execute('SELECT data FROM sessions WHERE key=?', (key,)).fetchone()
-                session = Session(**json.loads(row[0])) if row else Session(key=key)
+                session = self._decode(row[0]) if row else Session(key=key)
                 session.character = self.role_id(session.character)
                 role = conn.execute('SELECT data FROM role_states WHERE session_key=? AND character=?', (key, session.character)).fetchone()
                 if role:
@@ -111,7 +134,7 @@ class SessionStore:
                         setattr(session, name, value)
                 elif row:
                     conn.execute('INSERT OR IGNORE INTO role_states VALUES (?,?,?,?)', (key, session.character, json.dumps(self._role_data(session), ensure_ascii=False), time.time()))
-                if row and any((name in json.loads(row[0]) for name in ROLE_FIELDS)):
+                if row and (not json.loads(row[0]).get('proactive_default_applied') or any(name in json.loads(row[0]) for name in ROLE_FIELDS)):
                     conn.execute('UPDATE sessions SET data=? WHERE key=?', (json.dumps(self._metadata(session), ensure_ascii=False), key))
                 return session
         return await asyncio.to_thread(read)
@@ -180,7 +203,7 @@ class SessionStore:
         def read():
             self.initialize()
             with self.database.transaction() as conn:
-                sessions = [Session(**json.loads(row[0])) for row in conn.execute('SELECT data FROM sessions')]
+                sessions = [self._decode(row[0]) for row in conn.execute('SELECT data FROM sessions')]
                 return [s.key for s in sessions if s.private and s.proactive and (0 < s.next_proactive <= now)]
         return await asyncio.to_thread(read)
 

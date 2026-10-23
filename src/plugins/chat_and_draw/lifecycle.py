@@ -12,26 +12,50 @@ from .memory import EventMemoryStore
 class BackgroundLifecycle:
 
     async def run_proactive_once(self, now=None):
-        now = datetime.now() if now is None else now
-        if now.hour < 6 or (now.hour == 6 and now.minute < 30):
+        from .proactive import local_now, in_window, eligible, next_time
+        from .sessions import trim_history
+        now = local_now() if now is None else now
+        if not in_window(now):
             return
-        for key in await self.store.due(time.time()):
+        epoch = now.timestamp()
+        for key in await self.store.due(epoch):
             async with self.store.lock(key):
                 session = await self.store.load(key)
-                if not session.proactive or not session.private or session.next_proactive > time.time():
+                if not session.proactive or not session.private or session.next_proactive > epoch:
                     continue
-                session.next_proactive = time.time() + random.uniform(3600, 7200)
-                await self.store.save(session)
-                try:
-                    bot = self.get_bot(session.bot_id)
-                    history = session.history[-5:] + [{'role': 'user', 'content': '[定时聊天提示：用户暂时没有发消息，请按当前人设主动说一句简短问候，仅文字。]'}]
-                    (reply, _, _, _) = await self.get_chat_response(history, card=self.current_card(session), silent_failure=True, memory_context={'memories': session.memories, 'summary': session.summary})
-                    if reply:
-                        await bot.send_private_msg(user_id=int(session.user_id), message=reply)
-                        session.history.append({'role': 'assistant', 'content': reply})
-                        await self.store.save(session)
-                except Exception as exc:
-                    logger.warning('Proactive message failed: {}', type(exc).__name__)
+                session.next_proactive = next_time(now, max(session.last_interaction, epoch))
+                if not eligible(session, now):
+                    await self.store.save(session)
+                    continue
+                day = now.date().isoformat()
+                session.proactive_attempts = (session.proactive_attempts if session.proactive_day == day else 0) + 1
+                session.proactive_day = day
+                await self.store.save(session)  # Reserve budget before any API call, survives restart.
+                last_interaction, character = session.last_interaction, session.character
+            try:
+                bot = self.get_bot(session.bot_id)
+                history = [{'role': m['role'], 'content': m['content']} for m in session.history[-6:]]
+                history.append({'role': 'user', 'content':
+                    f'[主动问候提示：当地时间{now:%H:%M}，用户已一段时间没有聊天。按人设自然开启一个轻松话题或简短问候，最多80字。'
+                    '仅文字，不输出任何工具标签；不声称知道用户正在做什么，不催促或责怪对方回复，也不编造网络故障。]'})
+                (reply, _, _, _) = await self.get_chat_response(history, card=self.current_card(session),
+                    silent_failure=True, memory_context={'memories': session.memories, 'summary': session.summary})
+                reply = ' '.join(reply.split())[:160]
+                if not reply:
+                    continue
+                async with self.store.lock(key):
+                    current = await self.store.load(key)
+                    # A human message or role/opt-in change during generation cancels this greeting.
+                    if (not current.proactive or current.proactive_unanswered
+                            or current.last_interaction != last_interaction or current.character != character):
+                        continue
+                    current.proactive_unanswered = True
+                    await self.store.save(current)  # Ambiguous send failures must not duplicate a greeting.
+                    await asyncio.wait_for(bot.send_private_msg(user_id=int(current.user_id), message=reply), 20)
+                    current.history = trim_history(current.history + [{'role': 'assistant', 'content': reply}])
+                    await self.store.save(current)
+            except Exception as exc:
+                logger.warning('Proactive message failed: {}', type(exc).__name__)
 
     async def proactive_chat(self):
         while True:

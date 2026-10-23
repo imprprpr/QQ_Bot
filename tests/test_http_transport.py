@@ -2,6 +2,7 @@
 import asyncio
 import unittest
 from aiohttp import web
+from unittest.mock import patch
 
 from test_bot import plugin
 from src.plugins.chat_and_draw.http_transport import request_json, HttpFailure
@@ -24,6 +25,10 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
                 return web.json_response({}, status=429, headers={"Retry-After": "120"})
             if self.mode == "slow" and self.calls == 1:
                 await asyncio.sleep(.8)
+            if self.mode == "slow-retry":
+                if self.calls == 1:
+                    return web.Response(status=503, headers={"Retry-After": "0"})
+                await asyncio.sleep(.35)
             if self.mode == "bad":
                 return web.Response(text="not json")
             if self.mode == "large":
@@ -106,3 +111,14 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         self.mode = "auth"
         self.assertEqual(await self.call(), {"ok": True})
         self.assertEqual(self.forced, [False, True])
+
+    async def test_final_attempt_uses_remaining_total_budget(self):
+        self.mode = "slow-retry"
+        self.assertEqual(await self.call(attempt_timeout=.1), {"ok": True})
+        self.assertEqual(self.calls, 2)
+
+    async def test_single_attempt_still_respects_attempt_budget(self):
+        self.mode = "slow"
+        with self.assertRaises(asyncio.TimeoutError):
+            await self.call(attempt_timeout=.1, max_attempts=1)
+        self.assertEqual(self.calls, 1)

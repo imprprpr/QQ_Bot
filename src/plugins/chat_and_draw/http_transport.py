@@ -84,7 +84,9 @@ async def request_json(url, payload, headers_factory, *, timeout=89, attempt_tim
                     raise asyncio.TimeoutError()
                 headers = await asyncio.wait_for(headers_factory(force_auth), timeout=min(12, remaining))
                 metrics["auth_ms"] = round((time.monotonic() - metrics["_started"]) * 1000, 2)
-                budget = min(attempt_timeout, deadline - time.monotonic())
+                budget = deadline - time.monotonic()
+                if attempt < max_attempts or max_attempts == 1:
+                    budget = min(attempt_timeout, budget)
                 if budget <= 0:
                     raise asyncio.TimeoutError()
                 limits = aiohttp.ClientTimeout(total=budget, connect=min(8, budget), sock_connect=min(8, budget))

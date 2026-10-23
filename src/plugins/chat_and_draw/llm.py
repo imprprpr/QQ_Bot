@@ -56,6 +56,10 @@ def get_client(vision=False):
 
 def build_messages(system_prompt, history):
     """Expand bounded local image IDs to OpenAI-compatible image_url content."""
+    # Compatibility with operational notices persisted by earlier versions.
+    history = [item for item in history if not (item['role'] == 'assistant' and
+        item.get('content') in {'这次回复等得有点久，模型服务暂时没有响应，请稍后再试。',
+                               '呜呜，我脑袋短路了，稍等一下哦~'})]
     chosen = set()
     if direct_vision():
         for index in range(len(history) - 1, -1, -1):
@@ -229,6 +233,10 @@ async def get_image_description(image_b64_list: list, context_text: str = "") ->
 
 from .tavern import tavern_manager
 
+class ServiceNotice(str):
+    """Operational fallback: deliver as text but never store as role dialogue."""
+
+
 async def get_chat_response(messages_history: list, card=None, *, silent_failure=False, visual_context=None, memory_context=None, group_context=None) -> tuple[str, str | None, str | None, bool]:
     """
     调用配置的聊天 API，返回 (回复文本, draw指令, sticker指令, 是否使用语音)。
@@ -282,8 +290,8 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
         await record("model", "failed", error="TimeoutError", elapsed=round(time.monotonic() - started, 3))
         logger.warning("Chat model timed out after {:.1f}s; ComfyUI was not submitted",
                        time.monotonic() - started)
-        return ("" if silent_failure else "这次回复等得有点久，模型服务暂时没有响应，请稍后再试。"), None, None, False
+        return ("" if silent_failure else ServiceNotice("这次回复等得有点久，模型服务暂时没有响应，请稍后再试。")), None, None, False
     except Exception as e:
         await record("model", "failed", error=type(e).__name__)
         logger.warning("Chat request failed: {}", type(e).__name__)
-        return ("" if silent_failure else "呜呜，我脑袋短路了，稍等一下哦~"), None, None, False
+        return ("" if silent_failure else ServiceNotice("聊天服务暂时没有返回有效结果，请稍后再试。")), None, None, False

@@ -11,7 +11,7 @@ from .memory import EventMemoryStore
 class CommandHandlers:
 
     async def handle_help(self):
-        await self.cmd_help.send('角色聊天机器人\n/cards：查看角色\n/switch 名字：切换并恢复该角色记忆\n/memory：查看角色记忆\n/remember 内容：记住长期信息\n/forget 序号：删除记忆\n/events：查看自动记忆及来源\n/forgetevent ID 或 all：删除自动记忆\n/reset：重置当前会话记忆\n/proactive on 或 off：开启或关闭主动聊天（仅私聊，默认关闭）\n' + ('/draw 英文画面描述：直接调用图片服务，不经过聊天模型\n' if feature_enabled('DRAW_ENABLED') else '当前未启用生图。\n') + ('支持发送语音。' if feature_enabled('TTS_ENABLED') else '当前未启用语音。') + '群聊可 @ 我或叫我的昵称；平时会限频参与。群内命令请先 @ 我。')
+        await self.cmd_help.send('角色聊天机器人\n/cards：查看角色\n/switch 名字：切换并恢复该角色记忆\n/memory：查看角色记忆\n/remember 内容：记住长期信息\n/forget 序号：删除记忆\n/events：查看自动记忆及来源\n/forgetevent ID 或 all：删除自动记忆\n/reset：重置当前会话记忆\n/proactive on 或 off：开启或关闭主动聊天（仅私聊，默认开启）\n' + ('/draw 英文画面描述：直接调用图片服务，不经过聊天模型\n' if feature_enabled('DRAW_ENABLED') else '当前未启用生图。\n') + ('支持发送语音。' if feature_enabled('TTS_ENABLED') else '当前未启用语音。') + '群聊可 @ 我或叫我的昵称；平时会限频参与。群内命令请先 @ 我。')
 
     async def handle_cards(self):
         cards = tavern_manager.list_cards()
@@ -130,7 +130,7 @@ class CommandHandlers:
             session.proactive = value in {'on', '开启'}
             session.touch()
             await self.store.save(session)
-            await self.cmd_proactive.send('主动聊天已开启，服务器本地时间 00:00–06:30 勿扰。' if session.proactive else '主动聊天已关闭。')
+            await self.cmd_proactive.send('主动聊天已开启：按配置时区在日间随机问候，遵守闲置时间和每日上限；未回复时暂停。/proactive off 可关闭。' if session.proactive else '主动聊天已关闭。')
 
     async def handle_draw(self, bot: Bot, event: Event, args: Message=CommandArg()):
         if not feature_enabled('DRAW_ENABLED'):

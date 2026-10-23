@@ -8,6 +8,7 @@ from functools import partial
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import Bot, Event, MessageSegment
 from nonebot.typing import T_State
+from .llm import ServiceNotice
 from .config import MAX_IMAGES, feature_enabled
 from .sessions import session_key, trim_history
 from .image_history import save_image
@@ -132,11 +133,12 @@ class ChatFlow:
                     if reply == '[不参与]':
                         reply = ''
                     (draw, sticker, voice) = (None, None, False)
+                service_notice = isinstance(reply, ServiceNotice)
                 explicit_voice = bool(re.search('发.*语音|说句话|听听你的声音|录音', text))
                 cooldown = max(0, float(os.getenv('STICKER_COOLDOWN', '30')))
                 allow_sticker = time.time() - session.last_sticker_time >= cooldown or bool(re.search('表情包|动图', text))
                 try:
-                    delivery = await self.send_reply(reply, draw, sticker, (voice or explicit_voice) and (not ambient), allow_sticker=allow_sticker, defer_draw=partial(self.enqueue_draw, self.store, bot, event), character=session.character, sticker_context=text + ' ' + reply)
+                    delivery = await self.send_reply(reply, draw, sticker, (voice or explicit_voice) and (not ambient) and (not service_notice), allow_sticker=allow_sticker, defer_draw=partial(self.enqueue_draw, self.store, bot, event), character=session.character, sticker_context=text + ' ' + reply)
                 except Exception as exc:
                     log_send_error('reply-pipeline', exc)
                     await record('reply-pipeline', 'failed', error=type(exc).__name__)
@@ -146,13 +148,13 @@ class ChatFlow:
                         session.last_sticker_time = time.time()
                     if delivery.image_generated and draw:
                         session.last_image_prompt = draw[:3000]
-                    remembered = reply if delivery.text_sent else ''
+                    remembered = reply if delivery.text_sent and not service_notice else ''
                     status = delivery.image_status()
                     if status:
                         remembered += '\n' + status
                     if remembered.strip():
                         session.history.append({'role': 'assistant', 'content': remembered.strip()})
-                elif reply:
+                elif reply and not service_notice:
                     session.history.append({'role': 'assistant', 'content': reply})
                 await self.store.save(session)
                 if group_context and reply and isinstance(delivery, DeliveryResult) and delivery.text_sent:

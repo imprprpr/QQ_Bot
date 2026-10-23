@@ -131,7 +131,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
             await plugin.run_proactive_once(datetime(2026, 10, 19, 12))
             await plugin.run_proactive_once(datetime(2026, 10, 19, 12))
         bot.send_private_msg.assert_awaited_once_with(user_id=123, message="hello")
-        self.assertGreater((await self.store.load("one")).next_proactive, time.time())
+        self.assertGreater((await self.store.load("one")).next_proactive, datetime(2026, 10, 19, 12).timestamp())
 
     async def test_proactive_quiet_hours(self):
         with patch.object(plugin, "store") as store:
