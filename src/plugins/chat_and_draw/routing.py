@@ -5,6 +5,8 @@ from nonebot.typing import T_State
 class MessageRouting:
 
     async def addressed(self, event: Event) -> bool:
+        if getattr(event, 'group_id', None) is not None and self.bot_interactions.is_peer(event.get_user_id()):
+            return False  # Known bots never execute human commands, including when disabled.
         return event.get_type() == 'message' and (getattr(event, 'message_type', None) == 'private' or event.is_tome())
 
     async def group_message(self, event: Event) -> bool:
@@ -20,7 +22,10 @@ class MessageRouting:
             return str(event.get_user_id()) != str(bot.self_id)
         if getattr(event, 'group_id', None) is None:
             return False
-        context = await self.group_chat.select(bot, event)
+        if self.bot_interactions.is_peer(event.get_user_id()):
+            context = await self.bot_interactions.select(bot, event)
+        else:
+            context = await self.group_chat.select(bot, event)
         if context is None:
             return False
         state['group_context'] = context

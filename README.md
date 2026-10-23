@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="#tech-stack">技术栈</a> · <a href="#features">特性速览</a> · <a href="#quick-start">安装部署</a> · <a href="#model-api">模型配置</a> · <a href="#image-generation">图片生成</a> · <a href="#voice-stickers">语音与表情</a><br>
-  <a href="#commands">命令索引</a> · <a href="#group-chat">群聊参与</a> · <a href="#proactive">主动问候</a> · <a href="#memory">角色记忆</a> · <a href="#admin">管理界面</a> · <a href="#troubleshooting">常见排障</a><br>
+  <a href="#commands">命令索引</a> · <a href="#group-chat">群聊参与</a> · <a href="#proactive">主动问候</a> · <a href="#bot-interaction">机器人斗嘴</a> · <a href="#memory">角色记忆</a> · <a href="#admin">管理界面</a> · <a href="#troubleshooting">常见排障</a><br>
   <a href="#architecture">架构</a> · <a href="#data">数据持久化</a> · <a href="#cloud-server">云服务器</a> · <a href="#systemd">systemd 后台管理</a> · <a href="#documentation">文档索引</a>
 </p>
 
@@ -410,6 +410,35 @@ TTS_TIMEOUT=95
 自然聊天示例：“傍晚去海边，你穿白裙，拍张全身照。”随后说“改成红裙，其他不变”，会参考上一张成功生成图片的描述。这里是文生图描述连续，并不保证跨图人脸完全一致。
 
 用户/角色记忆正常重启后恢复。`/reset` 不清除其他角色的记忆、不删除运行档案，也不取消已提交的图片任务。详细操作见[角色选择用户指南](角色选择用户指南.md)。
+
+<a id="bot-interaction"></a>
+
+## 与指定机器人互动
+
+在部署机器的 `.env.local` 填写目标机器人的QQ号与允许互动的群号，多个用英文逗号分隔：
+
+```dotenv
+BOT_INTERACTION_ENABLED=true
+BOT_INTERACTION_TARGETS=
+BOT_INTERACTION_GROUPS=
+```
+
+两个列表必须同时填写，留空不触发，也不会猜测群里谁是机器人。配置修改后重启服务。
+风格固定为当前角色的**傲娇斗嘴**：轻松吐槽、嘴硬接梗、偶尔反夸，不辱骂、不拿隐私开玩笑。
+只发送一条文字，附带程序创建的真正 OneBot `at` 消息段；目标只能来自配置，模型不能自行选人或 @ 全体。
+
+- **接对方的话**：对方 @ 或回复机器人时进入专用判断通道；普通发言默认30%抽样。
+  互动窗口内，同一对象的接话不再抽样，仍受5秒最小间隔和轮次限制。发给其他成员的消息和命令会跳过。
+- **主动搭话**：后台每5分钟检查一次，默认20%概率，在配置时区08–22点、近期15分钟有公开聊天的群里挑一个配置对象搭话。
+  每轮检查最多主动发送1条，所有群合计每天最多3次主动生成尝试，无需保持SSH连接。
+- **阻止无限互聊**：每群同时只与一个目标互动，窗口固定3分钟，默认我方最多2条（含主动开场，硬上限3条）。
+  窗口结束后再冷却10分钟；即使对方继续 @ 也不会绕过限制。每群每小时最多6次、所有群滚动24小时最多12次生成尝试。
+  超时、不参与和发送失败仍计入额度；发送结果不确定时不重发；重启不会重置额度或继续一个未确认发送的轮次。
+
+专用通道只使用当前群的短期公开上下文，不读取私聊记忆，不执行对方的 `/reset` 等命令，
+不提取长期记忆，也不调用生图、语音或表情包。对方可以选择不回复；本功能不改变其他机器人的规则。
+`BOT_INTERACTION_ENABLED=false` 可暂停互动；保留目标QQ号时，它们也不能退回普通 @ 通道绕过限频。
+完整参数见 [配置示例](.env.example)。小时和每日额度按生成尝试计数；内部模型暂态重试仍受总时限约束。
 
 <a id="memory"></a>
 

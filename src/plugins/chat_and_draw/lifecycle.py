@@ -62,6 +62,7 @@ class BackgroundLifecycle:
             await asyncio.sleep(300)
             try:
                 await self.run_proactive_once()
+                await self.run_bot_interaction_once()
                 await asyncio.to_thread(cleanup_tts_cache)
                 await asyncio.to_thread(cleanup_images)
                 await asyncio.to_thread(self.group_chat.cleanup)
@@ -72,6 +73,7 @@ class BackgroundLifecycle:
         if self._background_task is None or self._background_task.done():
             await asyncio.to_thread(self.store.initialize)
             await asyncio.to_thread(self.runtime.initialize)
+            await asyncio.to_thread(self.bot_interactions.initialize)
             await asyncio.to_thread(EventMemoryStore(self.store.path).initialize)
             await self.store.migrate_legacy()
             await asyncio.to_thread(self.group_chat.cleanup)

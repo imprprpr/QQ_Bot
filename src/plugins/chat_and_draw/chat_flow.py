@@ -57,6 +57,9 @@ class ChatFlow:
 
     async def handle_message(self, bot: Bot, event: Event, state: T_State=None):
         group_context = (state or {}).get('group_context')
+        if group_context and group_context['mode'] == 'bot-interaction':
+            await self.handle_bot_interaction(bot, group_context, event.get_message().extract_plain_text(), getattr(event, 'message_id', None))
+            return
         ambient = bool(group_context and group_context['mode'] in {'ambient', 'followup'})
         (text_parts, image_urls, memory_text_parts) = ([], [], [])
         for seg in event.get_message():

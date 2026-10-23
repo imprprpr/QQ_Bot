@@ -5,7 +5,9 @@ from .lifecycle import BackgroundLifecycle
 from .routing import MessageRouting
 from .sessions import SessionStore
 from .group_chat import GroupChat
-from nonebot import get_bot
+from .bot_interaction import BotInteractions
+from .bot_interaction_flow import BotInteractionFlow
+from nonebot import get_bot, get_bots
 from .llm import close_clients, get_chat_response, get_image_description, direct_vision
 from .comfyui import generate_image
 from .media import get_image_base64, get_tts_audio
@@ -15,12 +17,13 @@ from .memory import prepare as prepare_event_memory
 from .runtime import RuntimeStore
 from .delivery import try_send
 
-class BotApplication(CommandHandlers, ChatFlow, BackgroundLifecycle, MessageRouting):
+class BotApplication(CommandHandlers, ChatFlow, BotInteractionFlow, BackgroundLifecycle, MessageRouting):
     def __init__(self, path):
         self.store = SessionStore(path)
         self._group_chat = None
         self._background_task = None
         self._runtime = None
+        self._bot_interactions = None
 
     @property
     def runtime(self):
@@ -34,6 +37,13 @@ class BotApplication(CommandHandlers, ChatFlow, BackgroundLifecycle, MessageRout
             self._group_chat = GroupChat(self.store.path)
         return self._group_chat
 
+    @property
+    def bot_interactions(self):
+        if self._bot_interactions is None or self._bot_interactions.path != self.store.path:
+            self._bot_interactions = BotInteractions(self.store.path)
+        return self._bot_interactions
+
+    get_bots = staticmethod(get_bots)
     close_clients = staticmethod(close_clients)
     direct_vision = staticmethod(direct_vision)
     enqueue_draw = staticmethod(enqueue_draw)

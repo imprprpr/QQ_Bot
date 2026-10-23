@@ -121,4 +121,9 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         self.mode = "slow"
         with self.assertRaises(asyncio.TimeoutError):
             await self.call(attempt_timeout=.1, max_attempts=1)
-        self.assertEqual(self.calls, 1)
+        # Under scheduling pressure the connection itself may consume the budget.
+        # Verify one attempt and no retry, whether or not the server received it.
+        self.assertLessEqual(self.calls, 1)
+        self.assertEqual(len(self.events), 1)
+        self.assertEqual(self.events[0][1], 'failed')
+        self.assertEqual(self.events[0][0]['attempt'], 1)

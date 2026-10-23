@@ -77,6 +77,15 @@ class GroupChat:
             conn.execute('DELETE FROM group_chat_calls WHERE created<?', (now - 86400,))
             conn.execute('DELETE FROM group_chat_limits WHERE last_attempt<?', (now - 86400,))
 
+    def public_context(self, room, now):
+        with self.connect() as conn:
+            rows = conn.execute('SELECT speaker,text FROM group_chat_lines WHERE room=? AND created>=? ORDER BY id DESC LIMIT 12', (room, now-1800)).fetchall()[::-1]
+            return [{'speaker': row[0], 'text': row[1]} for row in rows]
+
+    def recent_activity(self, room, now):
+        with self.connect() as conn:
+            return bool(conn.execute("SELECT 1 FROM group_chat_lines WHERE room=? AND created>=? AND speaker NOT LIKE 'bot:%' LIMIT 1", (room, now-900)).fetchone())
+
     async def select(self, bot, event):
         if str(event.get_user_id()) == str(bot.self_id):
             return None
