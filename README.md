@@ -1,10 +1,38 @@
+<a id="top"></a>
+
 # AnimaBot · QQ 角色聊天机器人
 
 基于 **NoneBot2 + OneBot V11** 的 QQ 角色陪伴机器人，支持多角色对话、图片理解、ComfyUI / 云 API 生图、GPT-SoVITS / Genie-TTS / Google Chirp 3 HD 语音和情景表情包。当前版本 **0.4.0**。
 
 每个用户与每个角色分别保留上下文和长期信息；图片任务在后台排队，出图期间仍可聊天。项目带有仅限本机访问的管理页，可查看运行记录、任务结果与模型 token 用量。
 
+<p align="center">
+  <a href="#tech-stack">技术栈</a> · <a href="#features">特性速览</a> · <a href="#quick-start">安装部署</a> · <a href="#model-api">模型配置</a> · <a href="#image-generation">图片生成</a> · <a href="#voice-stickers">语音与表情</a><br>
+  <a href="#commands">命令索引</a> · <a href="#group-chat">群聊参与</a> · <a href="#proactive">主动问候</a> · <a href="#memory">角色记忆</a> · <a href="#admin">管理界面</a> · <a href="#troubleshooting">常见排障</a><br>
+  <a href="#architecture">架构</a> · <a href="#data">数据持久化</a> · <a href="#cloud-server">云服务器</a> · <a href="#systemd">systemd 后台管理</a> · <a href="#documentation">文档索引</a>
+</p>
+
+<a id="tech-stack"></a>
+
 ## 技术栈
+
+<p align="center">
+  <a href="https://www.python.org/"><img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white"></a>
+  <a href="https://nonebot.dev/"><img alt="NoneBot2 2.3+" src="https://img.shields.io/badge/NoneBot2-2.3%2B-EA5252?style=flat-square"></a>
+  <a href="https://onebot.dev/"><img alt="OneBot V11" src="https://img.shields.io/badge/OneBot-V11-009688?style=flat-square"></a>
+  <a href="https://fastapi.tiangolo.com/"><img alt="Web FastAPI" src="https://img.shields.io/badge/Web-FastAPI-009688?style=flat-square&amp;logo=fastapi&amp;logoColor=white"></a>
+  <a href="https://www.sqlite.org/"><img alt="Database SQLite" src="https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square&amp;logo=sqlite&amp;logoColor=white"></a>
+  <a href="https://python-poetry.org/"><img alt="Dependencies Poetry" src="https://img.shields.io/badge/Dependencies-Poetry-60A5FA?style=flat-square&amp;logo=poetry&amp;logoColor=white"></a>
+</p>
+<p align="center">
+  <img alt="LLM OpenAI-compatible API" src="https://img.shields.io/badge/LLM-OpenAI--compatible_API-412991?style=flat-square">
+  <a href="https://github.com/Comfy-Org/ComfyUI"><img alt="Image ComfyUI or Cloud API" src="https://img.shields.io/badge/Image-ComfyUI_%2F_Cloud_API-2088FF?style=flat-square"></a>
+  <img alt="TTS GPT-SoVITS, Genie, Cloud API" src="https://img.shields.io/badge/TTS-GPT--SoVITS_%2F_Genie_%2F_Cloud_API-FF8C42?style=flat-square">
+  <img alt="HTTP aiohttp and httpx" src="https://img.shields.io/badge/HTTP-aiohttp_%2F_httpx-2C5BB4?style=flat-square">
+</p>
+
+<details>
+<summary>展开查看组件用途与依赖说明</summary>
 
 | 层级 | 技术 | 用途 |
 |---|---|---|
@@ -21,7 +49,11 @@
 | 配置与依赖 | python-dotenv、Poetry | 环境变量配置、依赖声明 |
 | 测试 | unittest、AsyncMock、本机 HTTP / ASGI 服务 | 无真实 QQ、模型费用或 GPU 任务的回归测试 |
 
+</details>
+
 **聊天数据使用 SQLite。** JSON 用于角色卡、ComfyUI 工作流和本地表情标签，不用来替代聊天数据库。当前为单进程设计，尚未适配 PostgreSQL 或多实例共享数据库。
+
+<a id="features"></a>
 
 ## 主要功能
 
@@ -34,7 +66,9 @@
 - **后台图片队列**：默认最多8个等待或运行任务，GPU逐个执行；不发送固定的“正在生成图片”提示。
 - **语音与情景表情**：支持语音回复，本地精选表情优先，缺少匹配时尝试外部动漫动图。
 - **运行管理**：查看消息、模型阶段、token 用量、ComfyUI `prompt_id` 与发送结果，手动重发已有图片。
-- **群聊参与**：@ 直接回应、昵称限频回应、根据近期公开上下文低概率参与。普通消息在本地筛选，不逐条请求模型；私聊定时问候仍默认关闭。
+- **群聊参与**：@ 直接回应、昵称限频回应、根据近期公开上下文低概率参与。普通消息在本地筛选，不逐条请求模型；私聊定时问候默认开启。
+
+<a id="architecture"></a>
 
 ## 架构
 
@@ -55,6 +89,8 @@ NoneBot2 消息与命令路由
 本机管理页 → 运行记录、角色记忆、表情库、已有图片重发
 ```
 
+<a id="prerequisites"></a>
+
 ## 部署前准备
 
 1. Python 3.10 或以上；下述环境准备示例使用 Windows PowerShell。
@@ -64,6 +100,8 @@ NoneBot2 消息与命令路由
 5. 如需语音，配置云 TTS，或运行 GPT-SoVITS / Genie-TTS 并准备你有权使用的音色与参考音频。
 
 机器人启动脚本不会自动启动 QQ 协议端、ComfyUI、代理或 GPT-SoVITS。
+
+<a id="quick-start"></a>
 
 ## 安装与启动
 
@@ -93,6 +131,8 @@ python -m venv .venv
 
 以下 `python` 命令都应在安装了项目依赖的同一环境执行；使用 Poetry 时加 `poetry run`，使用上述虚拟环境时替换为 `.\.venv\Scripts\python.exe`。
 
+<a id="qq-connection"></a>
+
 ### 1. 配置 QQ 连接
 
 `.env` 默认仅监听本机：
@@ -110,6 +150,8 @@ ws://127.0.0.1:8080/onebot/v11/ws
 ```
 
 端口或跨机器部署需要相应调整。不要将本机管理接口直接暴露到公网；协议端的认证设置也应与 NoneBot 配置一致。
+
+<a id="model-api"></a>
 
 ### 2. 填写模型 API
 
@@ -169,6 +211,8 @@ python tools/check_api.py
 python tools/check_api.py --request
 ```
 
+<a id="image-generation"></a>
+
 ### 3. 配置 ComfyUI
 
 ```dotenv
@@ -201,6 +245,8 @@ DRAW_SCHEDULER=normal
 
 超时或机器人退出只结束本地等待，不会取消 ComfyUI 已接受的任务。重启后旧任务标记为中断，不自动重新生成。
 
+<a id="cloud-images"></a>
+
 #### 使用云端图片服务
 
 本机默认保持 `DRAW_BACKEND=comfyui`。无 GPU 的云服务器可选择 `DRAW_BACKEND=api`，保留原来的后台队列、角色上下文、图片保存与失败重发。支持返回 `data[0].b64_json` 的 OpenAI 风格 `/images/generations` 服务：
@@ -225,13 +271,20 @@ DRAW_TIMEOUT=120
 
 云端图片默认每次请求一张，遇到超时不自动再次生成，避免结果不确定时重复计费。失败可在管理界面检查阶段记录后决定是否重试。`/draw` 会使用所选后端，不再固定绑定 ComfyUI。
 
+<a id="model-diagnostics"></a>
+
 #### 模型请求分阶段诊断与有界重试
 
 `http_transport.py` 提供与服务商无关的 JSON HTTP 适配工具，供私有模型适配器及图片 API 使用。它记录 `model-http` 阶段：认证耗时、DNS/连接建立（含 TLS）、请求发出、响应头/正文时间、HTTP 状态、重试次数和总耗时。日志不记录提示词、请求体、认证头或完整项目 URL。
 
-使用该传输层的聊天适配器默认每次尝试最多 35 秒、总共最多 2 次，仍受 `LLM_TIMEOUT` 总时限限制。仅连接故障、超时、408/429/部分 5xx 可重试，带随机退避并尊重 `Retry-After`；401 最多触发一次凭据刷新。权限错误、无效请求、无效响应及模型内容拒绝不会反复提交。图片请求单独保持不自动重试。适配器内部已有重试时不要再叠加另一层 SDK 重试。
+使用该传输层的聊天适配器默认首次尝试最多 35 秒、最后一次重试可使用总时限的剩余预算，总共最多 2 次，仍受 `LLM_TIMEOUT` 总时限限制。仅连接故障、超时、408/429/部分 5xx 可重试，带随机退避并尊重 `Retry-After`；401 最多触发一次凭据刷新。权限错误、无效请求、无效响应及模型内容拒绝不会反复提交。图片请求单独保持不自动重试。适配器内部已有重试时不要再叠加另一层 SDK 重试。
 
 连接或认证完成前失败，可以定位到相应链路；请求发出后等待响应头的时间包含服务端排队/计算和返回网络路径，单凭客户端日志不能完全分离二者。应与同一接口的轻量请求及 DNS/TCP/TLS 探测对照，而不是把所有超时都解释为 DNS 或服务器内存不足。
+
+模型暂态错误最多重试一次；最后一次重试可以使用总超时的剩余时间，避免两次短超时浪费总预算。
+服务故障提示不写入角色历史，也不会为该提示合成语音。此机制不能保证上游拥堵时始终成功。
+
+<a id="voice-stickers"></a>
 
 ### 4. 配置语音与表情（可选）
 
@@ -276,6 +329,8 @@ TTS_DELIVERY=base64
 
 自有部署也可用 `TTS_HEADERS_FACTORY` 指定可信本地 Python 文件，提供同步 `headers(force=False) -> dict` 方法；文件负责认证，仓库不会读取或分发部署凭据。不要在角色卡、日志或版本库中保存密钥。
 
+<a id="genie-tts"></a>
+
 #### 用 Genie-TTS 在 CPU 服务器复用 GPT-SoVITS 模型
 
 [Genie-TTS](https://github.com/High-Logic/Genie-TTS) 为兼容版本的 GPT-SoVITS 权重提供转换和 ONNX 推理。先在独立本机环境中转换模型、保存参考音频及准确文本，再上传到服务器；权重、音频和私有配置不要提交到仓库。按上游文档确认具体模型版本，不能把任意 `.pth` 或 `.onnx` 文件当作通用模型。
@@ -316,9 +371,13 @@ TTS_TIMEOUT=95
 
 本地素材可从管理页导入，并设置情绪、角色文件 ID、适用和避免的关键词。支持 GIF/PNG/JPEG/WebP，每张不超过5MiB，最多500张。无本地匹配时再尝试外部接口；`STICKER_ENABLED=false` 仅关闭外部接口，本地素材仍可使用。
 
+<a id="commands"></a>
+
 ## 使用命令
 
 私聊直接发送；群聊可使用 QQ 的实际 @ 功能或叫昵称。群内命令仍需 @ 机器人。
+
+<a id="group-chat"></a>
 
 ### 群聊低频参与
 
@@ -343,12 +402,14 @@ TTS_TIMEOUT=95
 | `/forgetevent ID` / `/forgetevent all` | 停用指定或全部自动记忆 |
 | `/reset` | 重置当前角色上下文、手动及自动记忆、摘要和图片描述 |
 | `/draw 1girl, solo, smiling` | 绕过聊天模型，直接调用所选图片服务 |
-| `/proactive on` / `/proactive off` | 开启或关闭私聊主动问候，默认关闭 |
+| `/proactive on` / `/proactive off` | 开启或关闭私聊主动问候，默认开启 |
 | `/help` | 查看帮助 |
 
 自然聊天示例：“傍晚去海边，你穿白裙，拍张全身照。”随后说“改成红裙，其他不变”，会参考上一张成功生成图片的描述。这里是文生图描述连续，并不保证跨图人脸完全一致。
 
 用户/角色记忆正常重启后恢复。`/reset` 不清除其他角色的记忆、不删除运行档案，也不取消已提交的图片任务。详细操作见[角色选择用户指南](角色选择用户指南.md)。
+
+<a id="memory"></a>
 
 ## 自动事件记忆与自然对话（0.3）
 
@@ -371,7 +432,20 @@ MEMORY_MODEL=
 
 `EVENT_MEMORY_ENABLED=false` 关闭后续自动提取和自动回忆，已存记录仍可查看或删除，手动记忆照常使用。`/forgetevent` 停用自动记忆，不会删除最近对话、手动条目或运行档案；彻底重开当前角色请用 `/reset`。历史修订和归档仍保存在 SQLite，需按自己的数据保留策略清理。
 
-本阶段未加入持续情绪引擎、消息聚合或事件驱动的主动发言；现有主动问候计时机制保持原样。自然度需用实际对话对照验收，自动化测试验证机制和提示策略。
+本阶段未加入持续情绪引擎、消息聚合或事件驱动的主动发言；主动问候支持日间窗口和闲置判断。自然度需用实际对话对照验收，自动化测试验证机制和提示策略。
+
+<a id="proactive"></a>
+
+## 私聊主动问候
+
+私聊主动问候默认开启，`/proactive off` 关闭，`/proactive on` 重新开启。
+默认北京时间（`PROACTIVE_UTC_OFFSET=8`），08–10、12–14、19–22 的窗口内随机安排；
+`PROACTIVE_MODE=random` 改为08–22随机时段。至少闲置3小时才调用模型，日上限2次生成尝试，
+可用 `PROACTIVE_IDLE_HOURS` 和 `PROACTIVE_DAILY_LIMIT` 调整（上限3次）。问候只发一条文字，
+不调用图片、语音或表情包。发出后未收到用户回复则暂停，重启保留额度和待回复状态。
+生成期间若收到新消息、切换角色或关闭功能，本次问候取消。UTC偏移不自动处理夏令时。
+
+<a id="admin"></a>
 
 ## 本机管理页
 
@@ -390,6 +464,8 @@ python tools/manage.py
 - 导入、标记、查看和删除本地表情。
 
 页面与接口限制本机回环访问，接口还校验管理令牌和浏览器 Origin。令牌不写入浏览器持久存储。QQ接口返回成功只代表协议端接受，不代表用户已读。
+
+<a id="data"></a>
 
 ## 目录与数据
 
@@ -438,6 +514,8 @@ tests/                        离线回归测试
 
 `.env`、API 密钥、运行数据、参考音频、本地备份和缓存均不纳入 Git。角色卡、图片、音频、模型权重及节点扩展需遵守各自授权。
 
+<a id="troubleshooting"></a>
+
 ## 测试与排障
 
 ```powershell
@@ -457,6 +535,8 @@ python -m unittest discover -s tests -v
 
 真实部署仍需依次验收文字、角色切换、重启记忆、看图、语音、生成图片和群聊 @。本次升级见[0.4 升级说明](升级说明-0.4.md)，历史说明见[0.3](升级说明-0.3.md)和[0.2](升级说明-0.2.md)。
 
+<a id="cloud-server"></a>
+
 ## 无 GPU 的云服务器
 
 只运行聊天、看图、记忆和情景表情包时，在部署机器的 `.env.local` 中设置：
@@ -471,6 +551,8 @@ TTS_ENABLED=false
 云端与本机分别保存配置、凭据和运行数据库；不要把本机的代理地址、音频路径或凭据文件直接提交到仓库。
 
 表情包仅发送本地素材或 API 图片，不使用 QQ 内置表情作为回退。表情包获取或发送失败时保留文字回复，其他工具继续独立执行。
+
+<a id="systemd"></a>
 
 ## systemd 后台管理
 
@@ -493,3 +575,18 @@ sudo journalctl -u anima-bot -f
 
 
 编排模块、SQLite事务协调及旧数据迁移说明见[架构与持久化边界](ARCHITECTURE.md)。
+
+<a id="documentation"></a>
+
+## 文档索引
+
+| 文档 | 内容 |
+|---|---|
+| [架构说明](ARCHITECTURE.md) | 模块职责、数据库协调、会话与后台任务边界 |
+| [角色选择用户指南](角色选择用户指南.md) | 角色选择、切换与记忆操作 |
+| [0.4 升级说明](升级说明-0.4.md) | 当前版本变更与升级验证 |
+| [0.3 升级说明](升级说明-0.3.md) / [0.2 升级说明](升级说明-0.2.md) | 历史版本说明 |
+| [完整配置示例](.env.example) | 模型、生图、语音、群聊与主动问候配置 |
+| [systemd 服务模板](deploy/systemd/anima-bot.service) | 开机启动、退出重启与进程管理 |
+
+[返回顶部](#top)
