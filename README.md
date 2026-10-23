@@ -47,8 +47,8 @@ NoneBot2 消息与命令路由
           ├─ 聊天与图片理解 ───────────── OpenAI 兼容 API（API Key）
           │                               可选独立视觉 API
           ├─ 表情选择 ─────────────────── 本地素材 / nekos.best
-          ├─ 语音合成 ─────────────────── GPT-SoVITS
-          └─ 后台生图队列 ─────────────── ComfyUI
+          ├─ 语音合成 ─────────────────── GPT-SoVITS / Genie / 云 TTS
+          └─ 后台生图队列 ─────────────── ComfyUI / 云图片 API
                                           │
                               保存图片 → 发送到原 QQ 会话
 
@@ -60,8 +60,8 @@ NoneBot2 消息与命令路由
 1. Python 3.10 或以上；下述环境准备示例使用 Windows PowerShell。
 2. 独立运行且支持 OneBot V11 的 QQ 协议端。本仓库不包含 QQ 登录程序。
 3. 支持 OpenAI Chat Completions 协议的模型服务、API Key 和对应模型 ID。
-4. 如需生图，运行 ComfyUI 并安装工作流要求的模型及节点。
-5. 如需语音，运行 GPT-SoVITS 并准备你有权使用的参考音频。
+4. 如需生图，配置云图片 API，或运行 ComfyUI 并安装工作流要求的模型及节点。
+5. 如需语音，配置云 TTS，或运行 GPT-SoVITS / Genie-TTS 并准备你有权使用的音色与参考音频。
 
 机器人启动脚本不会自动启动 QQ 协议端、ComfyUI、代理或 GPT-SoVITS。
 
@@ -397,12 +397,18 @@ python tools/manage.py
 bot.py                         启动 NoneBot 和 OneBot 适配器
 characters/                    角色卡
 src/plugins/chat_and_draw/
-  __init__.py                  命令与消息路由
+  __init__.py                  NoneBot 处理器和生命周期注册
+  application.py              应用状态与可替换服务边界
+  routing.py / commands.py     消息触发与命令处理
+  chat_flow.py / lifecycle.py  聊天编排与后台维护
+  database.py                 WAL、初始化与短事务写入协调
+  group_chat.py               短期群上下文与持久化限频
   sessions.py                  用户/角色状态和会话锁
   memory.py                    带证据、时间和版本的自动记忆
   conversation.py              自然对话规则与收尾提示
   llm.py                       API Key 客户端、多模态消息与动作解析
-  comfyui.py / workflow_api.json  工作流字段映射及生图调用
+  comfyui.py / workflow_api.json  工作流字段映射及生图后端选择
+  image_api.py / drawing.py    云图片接口、摄影风格与角色外貌
   jobs.py / delivery.py        后台图片任务与独立发送
   runtime.py                   运行、消息、用量和任务记录
   sticker_library.py / stickers.py  本地及外部表情
@@ -449,7 +455,7 @@ python -m unittest discover -s tests -v
 | 语音失败 | 检查 GPT-SoVITS、参考音频路径与 OneBot 文件可访问性 |
 | 表情包无法发送 | 检查本地情绪标签或外部 User-Agent/代理配置 |
 
-真实部署仍需依次验收文字、角色切换、重启记忆、看图、语音、生成图片和群聊 @。更多版本说明见[0.3 升级说明](升级说明-0.3.md)和[历史升级说明](升级说明-0.2.md)。
+真实部署仍需依次验收文字、角色切换、重启记忆、看图、语音、生成图片和群聊 @。本次升级见[0.4 升级说明](升级说明-0.4.md)，历史说明见[0.3](升级说明-0.3.md)和[0.2](升级说明-0.2.md)。
 
 ## 无 GPU 的云服务器
 
