@@ -12,9 +12,14 @@ import uuid
 from .config import feature_enabled
 from .database import database
 from .group_chat import number
+from .peer_config import managed
 
 
 def ids(name):
+    config = managed()
+    field = {'BOT_INTERACTION_TARGETS': 'targets', 'BOT_INTERACTION_GROUPS': 'groups'}.get(name)
+    if config is not None and field:
+        return set(config[field])
     return {value.strip() for value in os.getenv(name, '').split(',')
             if value.strip().isascii() and value.strip().isdigit() and int(value.strip()) > 0}
 
@@ -44,13 +49,17 @@ class BotInteractions:
 
     @staticmethod
     def is_peer(user):
-        return str(user) in ids('BOT_INTERACTION_TARGETS')
+        config = managed()
+        legacy = {value.strip() for value in os.getenv('BOT_INTERACTION_TARGETS', '').split(',')}
+        return str(user) in (legacy | config['known'] if config is not None else ids('BOT_INTERACTION_TARGETS'))
 
     @staticmethod
     def allowed(bot_id, group_id, peer):
+        config = managed()
         return (feature_enabled('BOT_INTERACTION_ENABLED')
+                and (config is None or config['enabled'])
                 and str(group_id) in ids('BOT_INTERACTION_GROUPS')
-                and BotInteractions.is_peer(peer) and str(peer) != str(bot_id))
+                and str(peer) in ids('BOT_INTERACTION_TARGETS') and str(peer) != str(bot_id))
 
     @staticmethod
     def room(bot_id, group_id):

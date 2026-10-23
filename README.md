@@ -424,6 +424,11 @@ BOT_INTERACTION_GROUPS=
 ```
 
 两个列表必须同时填写，留空不触发，也不会猜测群里谁是机器人。配置修改后重启服务。
+也可以使用 [NapCat 群号与QQ批量管理插件](deploy/napcat/napcat-plugin-anima-peer-manager/README.md)：
+在 NapCat 的插件配置中选择群与好友，或粘贴多个号码批量追加、移除。
+通过 `BOT_INTERACTION_CONFIG_FILE` 接入共享配置后，保存即热更新，不改动 `.env.local` 的其他设置。
+部分 NapCat 版本仅接受官方白名单插件，安装前需确认加载器支持；插件不会自行修改加载器。
+
 风格固定为当前角色的**傲娇斗嘴**：轻松吐槽、嘴硬接梗、偶尔反夸，不辱骂、不拿隐私开玩笑。
 只发送一条文字，附带程序创建的真正 OneBot `at` 消息段；目标只能来自配置，模型不能自行选人或 @ 全体。
 

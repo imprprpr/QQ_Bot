@@ -1,0 +1,9 @@
+{
+  "name": "napcat-plugin-anima-peer-manager",
+  "version": "1.0.0",
+  "description": "AnimaBot 群号与互动QQ批量管理",
+  "main": "index.mjs",
+  "type": "module",
+  "author": "AnimaBot",
+  "scripts": {"test": "node --test test.mjs"}
+}
