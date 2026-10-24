@@ -40,6 +40,37 @@ class ManagedModelsTests(unittest.IsolatedAsyncioTestCase):
         first['model']='changed'
         self.assertEqual(client.profile['model'],'first')
 
+    async def test_direct_reply_budget_grows_without_expanding_ambient_budget(self):
+        client=providers.ManagedClient({'model':'fixture','base_url':'https://example.com/v1','api_key':'secret'})
+        data={'choices':[{'finish_reason':'stop','message':{'content':'ok'}}]}
+        with patch.object(providers,'request_json',AsyncMock(return_value=data)) as request:
+            await client.create(model='fixture',messages=[],max_tokens=500)
+            self.assertEqual(request.await_args.args[1]['max_tokens'],1024)
+            await client.create(model='fixture',messages=[],max_tokens=180)
+            self.assertEqual(request.await_args.args[1]['max_tokens'],180)
+
+    async def test_truncated_reply_keeps_text_without_executing_partial_or_complete_media(self):
+        llm=test_bot.llm
+        for text in ['你好，这是生成的一部分<draw: incomplete', '你好<sticker: happy><voice>']:
+            response=SimpleNamespace(choices=[SimpleNamespace(finish_reason='length',message=SimpleNamespace(content=text))],usage=None)
+            client=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock(return_value=response))))
+            with patch.object(llm,'get_client',return_value=client):
+                result=await llm.get_chat_response([{'role':'user','content':'你好'}])
+            self.assertIn('你好',result[0])
+            self.assertIn('未完整生成',result[0])
+            self.assertNotIn('<',result[0])
+            self.assertEqual(result[1:],(None,None,False))
+
+    async def test_reasoning_only_or_code_truncation_never_exposes_incomplete_source(self):
+        llm=test_bot.llm
+        for user,text in [('你好',''),('分析这段代码','def run():')]:
+            response=SimpleNamespace(choices=[SimpleNamespace(finish_reason='length',message=SimpleNamespace(content=text))],usage=None)
+            client=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock(return_value=response))))
+            with patch.object(llm,'get_client',return_value=client):
+                result=await llm.get_chat_response([{'role':'user','content':user}])
+            self.assertIsInstance(result[0],llm.ServiceNotice)
+            self.assertEqual(result[1:],(None,None,False))
+
     async def test_rate_notice_is_not_persona_history_and_has_no_media(self):
         llm=test_bot.llm
         create=AsyncMock(side_effect=CooldownError(30))

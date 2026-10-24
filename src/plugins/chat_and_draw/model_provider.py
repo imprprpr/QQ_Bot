@@ -46,7 +46,10 @@ class ManagedClient:
 
     async def create(self, *, model, messages, max_tokens=500, temperature=None, extra_body=None, **kwargs):
         profile = self.profile
-        payload = {'model': profile['model'], 'messages': messages, 'max_tokens': max_tokens, 'stream': False}
+        # Direct replies need room for natural text and internal media tags.
+        # Preserve the separate <=180 token budget for unmentioned group chats.
+        budget = max(1024, max_tokens) if max_tokens >= 500 else max_tokens
+        payload = {'model': profile['model'], 'messages': messages, 'max_tokens': budget, 'stream': False}
         if temperature is not None:
             payload['temperature'] = temperature
         # Legacy provider-specific options must not leak into a newly selected API.

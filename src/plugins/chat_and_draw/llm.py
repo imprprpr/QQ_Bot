@@ -317,6 +317,19 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
         ), timeout=LLM_TIMEOUT)
         await record_usage(response, current_model)
         await record("model", "completed", elapsed=round(time.monotonic() - started, 3))
+        choice = response.choices[0]
+        await record('model-output', 'received', finish_reason=getattr(choice, 'finish_reason', None),
+                     text_present=bool(getattr(choice.message, 'content', None)))
+        if getattr(choice, 'finish_reason', None) == 'length':
+            # Partial tool arguments must never produce drawings or other side
+            # effects. Only deliver already generated natural language.
+            raw = getattr(choice.message, 'content', None)
+            await record('model-output', 'partial', reason='output_limit', text_present=bool(raw))
+            if isinstance(raw, str) and raw.strip() and not code_analysis:
+                text = re.split(r'<\s*(?:draw|sticker|voice)\b', raw, maxsplit=1, flags=re.I)[0].strip()
+                if text:
+                    return qq_plain_text(text + '\n（这条回复未完整生成，可以让我继续。）'), None, None, False
+            return ('' if silent_failure else ServiceNotice('模型生成达到了输出上限，未取得完整回复。请缩小问题范围后再试。')), None, None, False
         if code_analysis:
             content = response_content(response)
             if not isinstance(content, str) or not content.strip():
