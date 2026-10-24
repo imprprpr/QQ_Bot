@@ -10,7 +10,7 @@ from nonebot.adapters.onebot.v11 import Bot, Event, MessageSegment
 from nonebot.typing import T_State
 from .llm import ServiceNotice
 from .code_analysis import needs_code_analysis
-from .qq_text import qq_plain_text, qq_chunks
+from .qq_text import qq_plain_text, qq_chunks, sms_chunks, source_text
 from .config import MAX_IMAGES, feature_enabled
 from .sessions import session_key, trim_history
 from .image_history import save_image
@@ -22,9 +22,10 @@ from .group_chat import GroupChat
 
 class ChatFlow:
 
-    async def send_reply(self, reply_text, draw_tags, sticker, voice, *, allow_sticker=True, defer_draw=None, character=None, sticker_context=''):
+    async def send_reply(self, reply_text, draw_tags, sticker, voice, *, allow_sticker=True, defer_draw=None, character=None, sticker_context='', text_mode='chat', bubble_limit=3):
         draw_tags = draw_tags if feature_enabled('DRAW_ENABLED') else None
         voice = voice and feature_enabled('TTS_ENABLED')
+        preserve = text_mode != 'chat' or source_text(reply_text) or isinstance(reply_text, ServiceNotice)
         reply_text = qq_plain_text(reply_text)
         result = DeliveryResult(image_requested=bool(draw_tags))
         if reply_text:
@@ -35,12 +36,16 @@ class ChatFlow:
                 if not result.text_sent:
                     result.text_sent = await self.try_send(self.chat_handler, MessageSegment.text(reply_text), 'voice-text-fallback')
             else:
-                parts = qq_chunks(reply_text)
+                result.delivered_text = ''
+                parts = qq_chunks(reply_text) if preserve else sms_chunks(reply_text, bubble_limit)
                 for (index, part) in enumerate(parts):
                     if index:
-                        await asyncio.sleep(random.uniform(0.5, 1.2))
+                        await asyncio.sleep(random.uniform(0.6, 1.0) + min(1.4, len(part)/70))
                     sent = await self.try_send(self.chat_handler, MessageSegment.text(part), f'text-{index + 1}')
                     result.text_sent = result.text_sent or sent
+                    if not sent:
+                        break
+                    result.delivered_text += ('\n' if result.delivered_text else '') + part
         if sticker and allow_sticker:
             category = normalize_category(sticker)
             if category:
@@ -148,7 +153,7 @@ class ChatFlow:
                 cooldown = max(0, float(os.getenv('STICKER_COOLDOWN', '30')))
                 allow_sticker = time.time() - session.last_sticker_time >= cooldown or bool(re.search('表情包|动图', text))
                 try:
-                    delivery = await self.send_reply(reply, draw, sticker, (voice or explicit_voice) and (not ambient) and (not service_notice) and (not code_analysis), allow_sticker=allow_sticker, defer_draw=partial(self.enqueue_draw, self.store, bot, event), character=session.character, sticker_context=text + ' ' + reply)
+                    delivery = await self.send_reply(reply, draw, sticker, (voice or explicit_voice) and (not ambient) and (not service_notice) and (not code_analysis), allow_sticker=allow_sticker, defer_draw=partial(self.enqueue_draw, self.store, bot, event), character=session.character, sticker_context=text + ' ' + reply, text_mode='technical' if code_analysis or service_notice else 'chat', bubble_limit=1 if ambient else 2 if group_context else 3)
                 except Exception as exc:
                     log_send_error('reply-pipeline', exc)
                     await record('reply-pipeline', 'failed', error=type(exc).__name__)
@@ -158,7 +163,7 @@ class ChatFlow:
                         session.last_sticker_time = time.time()
                     if delivery.image_generated and draw:
                         session.last_image_prompt = draw[:3000]
-                    remembered = reply if delivery.text_sent and not service_notice else ''
+                    remembered = (delivery.delivered_text if delivery.delivered_text is not None else reply) if delivery.text_sent and not service_notice else ''
                     status = delivery.image_status()
                     if status:
                         remembered += '\n' + status
@@ -168,4 +173,5 @@ class ChatFlow:
                     session.history.append({'role': 'assistant', 'content': reply})
                 await self.store.save(session)
                 if group_context and reply and isinstance(delivery, DeliveryResult) and delivery.text_sent:
-                    await asyncio.to_thread(self.group_chat.add, GroupChat.room(bot, event), None, 'bot:' + str(bot.self_id) + ':to:' + str(event.get_user_id()), reply, time.time())
+                    delivered = delivery.delivered_text if delivery.delivered_text is not None else reply
+                    await asyncio.to_thread(self.group_chat.add, GroupChat.room(bot, event), None, 'bot:' + str(bot.self_id) + ':to:' + str(event.get_user_id()), delivered, time.time())

@@ -22,6 +22,7 @@ class DeliveryResult:
     saved_path: str | None = None
     sticker_sent: bool = False
     image_queued: bool = False
+    delivered_text: str | None = None
 
     def image_status(self):
         if not self.image_requested:

@@ -293,6 +293,8 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
     current_system_prompt += "\n" + QQ_TEXT_PROMPT
     if code_analysis:
         current_system_prompt += "\n" + CODE_ANALYSIS_PROMPT
+    elif not ambient:
+        current_system_prompt += '\n【短信式日常表达】日常闲聊像在QQ发短信，接住当下这一件事即可。通常一两句，内容多时用换行分开两三个完整意思，每段一两句；不要写长篇总结、连续说教或每次都套用“安慰、分析、建议”三段式。不要为了凑气泡把短句切碎，不输出气泡编号或分隔符。详细解释等明确请求按实际需要展开，实际消息切分由程序完成。\n'
     output_budget = int(os.getenv("LLM_MAX_TOKENS", "500"))
     if code_analysis:
         output_budget = max(output_budget, min(2400, max(500, int(os.getenv("CODE_ANALYSIS_MAX_TOKENS", "1400")))))

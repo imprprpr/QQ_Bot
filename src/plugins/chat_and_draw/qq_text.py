@@ -80,3 +80,58 @@ def qq_chunks(text, limit=1600):
     if text.strip():
         result.append(text.strip('\n'))
     return result
+
+
+def source_text(text):
+    """Leave code and logs intact even when delivery is called without a mode."""
+    return bool(re.search(r'```|(?:^|\n)(?: {4}|\t|async def |def |class |import |from \w+ import |Traceback \()', text))
+
+
+def sms_chunks(text, max_bubbles=3, target=75):
+    """Pack meaning-sized chat bubbles, preserving order and all nonspace text."""
+    text = qq_plain_text(text)
+    if not text.strip():
+        return []
+    max_bubbles = max(1, min(3, max_bubbles))
+    atoms = []
+    def protect(match):
+        atoms.append(match.group())
+        return '\x00ATOM' + str(len(atoms)-1) + '\x00'
+    protected = re.sub(r'https?://[^\s<>]+', protect, str(text))
+    bubbles = []
+    for paragraph in re.split(r'\n+', protected):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        sentences = re.findall(r'.+?(?:[。！？!?；;]+[”’」』）》）"\x27]*|$)', paragraph)
+        units = []
+        for sentence in sentences:
+            # Very long sentences can pause at clauses, never within a URL.
+            if len(sentence) > target * 1.8:
+                units.extend(re.findall(r'.+?(?:[，,]+|$)', sentence))
+            else:
+                units.append(sentence)
+        current = ''
+        for unit in units:
+            if current and len(current + unit) > target:
+                bubbles.append(current.strip())
+                current = ''
+            current += unit
+        if current.strip():
+            bubbles.append(current.strip())
+    # Merge adjacent short pieces instead of turning every exclamation into a send.
+    index = 0
+    while index < len(bubbles)-1:
+        if len(bubbles[index]) < 10:
+            bubbles[index:index+2] = [bubbles[index]+'\n'+bubbles[index+1]]
+        else:
+            index += 1
+    while len(bubbles) > max_bubbles:
+        index = min(range(len(bubbles)-1), key=lambda i:len(bubbles[i])+len(bubbles[i+1]))
+        bubbles[index:index+2] = [bubbles[index]+'\n'+bubbles[index+1]]
+    result = []
+    for bubble in bubbles:
+        for index, atom in enumerate(atoms):
+            bubble = bubble.replace('\x00ATOM'+str(index)+'\x00', atom)
+        result.append(QQText(bubble))
+    return result
