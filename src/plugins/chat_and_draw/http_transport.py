@@ -13,6 +13,7 @@ import aiohttp
 from nonebot import logger
 
 from .runtime import record
+from .rate_limit import endpoint_gate, CooldownError, ModelBusyError
 
 
 class HttpFailure(ValueError):
@@ -67,10 +68,27 @@ async def emit(metrics, status, observer=None):
 
 async def request_json(url, payload, headers_factory, *, timeout=89, attempt_timeout=35,
                        max_attempts=2, proxy=None, label="model", max_bytes=8 * 1024 * 1024,
-                       observer=None):
+                       observer=None, rate_key=None):
     if not math.isfinite(timeout) or not math.isfinite(attempt_timeout) or timeout <= 0 or attempt_timeout <= 0 or not 1 <= max_attempts <= 3:
         raise ValueError("INVALID_HTTP_RETRY_CONFIG")
     deadline = time.monotonic() + timeout
+    gate = endpoint_gate(rate_key or url)
+    # Bound queue time as part of the caller's total budget; one recovery probe
+    # per endpoint prevents concurrent chats from stampeding after a 429.
+    try:
+        await asyncio.wait_for(gate.lock.acquire(), timeout=min(10, timeout))
+    except asyncio.TimeoutError:
+        raise ModelBusyError('MODEL_QUEUE_BUSY') from None
+    try:
+        return await _request_json(url, payload, headers_factory, deadline=deadline,
+            attempt_timeout=attempt_timeout, max_attempts=max_attempts, proxy=proxy,
+            label=label, max_bytes=max_bytes, observer=observer, gate=gate)
+    finally:
+        gate.lock.release()
+
+
+async def _request_json(url, payload, headers_factory, *, deadline, attempt_timeout,
+                        max_attempts, proxy, label, max_bytes, observer, gate):
     identity = uuid.uuid4().hex[:12]
     force_auth = False
     async with aiohttp.ClientSession(trace_configs=[trace_config()]) as session:
@@ -79,6 +97,7 @@ async def request_json(url, payload, headers_factory, *, timeout=89, attempt_tim
                        "host": urlsplit(url).hostname, "attempt": attempt}
             retry_after = None
             try:
+                await gate.wait(deadline)
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise asyncio.TimeoutError()
@@ -115,6 +134,7 @@ async def request_json(url, payload, headers_factory, *, timeout=89, attempt_tim
                             raise ValueError("MODEL_RESPONSE_TOO_LARGE")
                     result = json.loads(data)
                     metrics["bytes"] = len(data)
+                    gate.recovered()
                     await emit(metrics, "completed", observer)
                     return result
             except asyncio.CancelledError:
@@ -126,6 +146,10 @@ async def request_json(url, payload, headers_factory, *, timeout=89, attempt_tim
                 if isinstance(exc, HttpFailure):
                     metrics["phase"] = "http_status"
                     retry = exc.status in {408, 429, 500, 502, 503, 504}
+                    if exc.status == 429:
+                        retry_after = gate.penalize(retry_after)
+                        exc.retry_after = retry_after
+                        metrics['cooldown_ms'] = round(retry_after * 1000, 2)
                     if exc.status == 401 and not force_auth:
                         force_auth = True
                         retry = True
@@ -136,11 +160,13 @@ async def request_json(url, payload, headers_factory, *, timeout=89, attempt_tim
                         retry = False
                 delay = retry_after if retry_after is not None else random.uniform(.5, 1.2) * (2 ** (attempt - 1))
                 remaining = deadline - time.monotonic()
-                retry = retry and attempt < max_attempts and delay + .2 < remaining
+                reserve = 3 if isinstance(exc, HttpFailure) and exc.status == 429 else .2
+                retry = retry and attempt < max_attempts and delay + reserve < remaining
                 if retry:
                     metrics["retry_delay_ms"] = round(delay * 1000, 2)
                 await emit(metrics, "retrying" if retry else "failed", observer)
                 if not retry:
                     raise
-                await asyncio.sleep(delay)
+                if not (isinstance(exc, HttpFailure) and exc.status == 429):
+                    await asyncio.sleep(delay)
     raise RuntimeError("UNREACHABLE_HTTP_RETRY")

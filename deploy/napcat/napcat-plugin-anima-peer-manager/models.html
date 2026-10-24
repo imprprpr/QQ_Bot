@@ -1,0 +1,43 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AnimaBot 模型提供商</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;color:#ececf2;background:#14151b}*{box-sizing:border-box}body{margin:0;padding:28px;max-width:1160px;margin:auto}h1{font-size:25px;margin:0 0 8px}p{color:#a5a7b6;line-height:1.7;margin:8px 0}header{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:24px}.pill{border:1px solid #3b4f50;background:#203739;color:#9de1c8;border-radius:25px;padding:10px 16px;font-size:13px}.layout{display:grid;grid-template-columns:265px 1fr;gap:22px}.panel{background:#1e2029;border:1px solid #30333f;border-radius:16px;padding:22px}h2{font-size:16px;margin:0 0 16px}.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0 24px}button{font:inherit;border:1px solid #424657;border-radius:9px;background:#2c2f3d;color:#ececf2;padding:11px 14px;cursor:pointer}button:hover{border-color:#879bf2;background:#34394d}button.selected{border-color:#8296fc;background:#344274}button.primary{background:#566fe1;border-color:#738cf6}button.danger{color:#ffb2b9}button:disabled{opacity:.5;cursor:wait}.profile{display:block;width:100%;text-align:left;margin-bottom:10px;overflow-wrap:anywhere}.profile small{display:block;color:#b5b9d0;margin-top:5px}label{display:block;color:#c5c8d7;font-size:14px;margin:16px 0 7px}input{width:100%;padding:12px 13px;border-radius:8px;border:1px solid #424657;background:#171922;color:#fff;font:inherit}input:focus{outline:2px solid #6f83e8}small{color:#a5a7b6;line-height:1.6}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}#notice{white-space:pre-wrap;color:#b7c6ff;padding:14px 0;min-height:48px}#notice.error{color:#ffb2b9}.row{display:flex;gap:10px;align-items:end}.row>div{flex:1}#profiles{margin-top:14px}.hint{border-top:1px solid #353846;margin-top:24px;padding-top:14px;font-size:13px}.active-dot{color:#8de5be}@media(max-width:720px){body{padding:16px}.layout{grid-template-columns:1fr}header{align-items:start;flex-direction:column}.panel{padding:18px}.cards{grid-template-columns:1fr 1fr}.row{flex-wrap:wrap}.row>div{min-width:200px}}
+</style>
+<header><div><h1>模型提供商</h1><p>保存你的 API 线路，自选模型，随时切换。 <a href="/webui/" target="_top" style="color:#aebdff">返回 NapCat / 登录</a></p></div><div class="pill" id="active">正在读取配置…</div></header>
+<div class="layout"><aside class="panel"><h2>我的配置</h2><button id="default">恢复部署默认</button><div id="profiles"></div><button id="new">＋ 新建配置</button><p class="hint">切换影响后续聊天请求，无需重启。已发出的请求继续使用原配置。生图与语音接口保持独立。</p></aside>
+<main class="panel"><h2>预设提供商</h2><input id="search" aria-label="搜索提供商" placeholder="搜索提供商…"><div class="cards" id="presets"></div>
+<label for="name">配置名称</label><input id="name" maxlength="80" placeholder="例如：日常聊天备用">
+<label for="url">API 基址</label><input id="url" placeholder="https://api.example.com/v1" autocomplete="off"><small>支持 OpenAI Chat Completions 兼容接口。其他协议及订阅登录不适用。</small>
+<label for="key">API Key</label><input id="key" type="password" autocomplete="new-password" placeholder="输入 API Key"><small id="keyhint">密钥只保存在服务器私有文件，不在页面回显。</small>
+<div class="row"><div><label for="model">聊天模型</label><input id="model" list="model-options" maxlength="200" placeholder="拉取列表后选择，或手动填写模型 ID"><datalist id="model-options"></datalist></div><button id="fetch">拉取模型列表</button></div><small id="modelhint">列表可能包含非聊天模型，请选择支持聊天的模型。拉取列表不等同于验证聊天权限。</small>
+<div class="actions"><button class="primary" id="apply">保存并启用</button><button id="save">仅保存</button><button id="activate">启用已保存配置</button><button class="danger" id="delete">删除配置</button></div><div id="notice" role="status" aria-live="polite"></div>
+</main></div>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);let state={profiles:[],presets:[],revision:'',active:null};let selected=null;let busy=false;
+const apiBase='/api/Plugin/ext/napcat-plugin-anima-peer-manager/models/';
+async function api(action,body){
+  const credential=localStorage.getItem('token');
+  if(!credential)throw Error('请先在 NapCat WebUI 登录，然后重新打开本页面。');
+  const response=await fetch(apiBase+action,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+credential},body:body?JSON.stringify(body):undefined,cache:'no-store'});
+  const result=await response.json();if(!response.ok||result.code!==0)throw Error(response.status===401||[401,403,-1].includes(result.code)&&/unauth|token|登录|鉴权/i.test(result.message||'')?'登录已过期，请点击上方链接重新登录 NapCat，再从扩展页面进入。':(result.message||'操作失败'));return result.data;
+}
+function notice(text,error=false){$('notice').textContent=text;$('notice').classList.toggle('error',error);}
+async function run(fn){if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){if($('active').textContent==='正在读取配置…')$('active').textContent='尚未连接';notice(e.message,true);}finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);}}
+function button(text,fn,cls=''){const b=document.createElement('button');b.textContent=text;b.className=cls;b.onclick=fn;return b;}
+function render(){
+  const active=state.profiles.find(p=>p.id===state.active);$('active').textContent=active?'使用中：'+active.name+' · '+active.model:'使用中：部署默认配置';
+  $('profiles').replaceChildren(...state.profiles.map(p=>{const b=button((p.id===state.active?'● ':'')+p.name,()=>edit(p),'profile'+(p.id===selected?' selected':''));const s=document.createElement('small');s.textContent=p.model;b.append(s);return b;}));
+  const q=$('search').value.trim().toLowerCase();$('presets').replaceChildren(...state.presets.filter(p=>p.name.toLowerCase().includes(q)).map(p=>button(p.name,()=>{edit(null);$('name').value=p.name;$('url').value=p.base_url;notice('填写密钥并拉取模型。');})));
+}
+function edit(p){selected=p?.id||null;for(const [id,k] of [['name','name'],['url','base_url'],['model','model']])$(id).value=p?.[k]||'';$('key').value='';$('keyhint').textContent=p?.has_key?'已保存密钥；留空保留。更换 API 地址时必须重新填写密钥。':'密钥只保存在服务器私有文件，不在页面回显。';$('model-options').replaceChildren();render();}
+function draft(){return {id:selected,revision:state.revision,name:$('name').value,base_url:$('url').value,api_key:$('key').value,model:$('model').value};}
+async function refresh(){state=await api('config');render();}
+async function save(activate){const result=await api('save',draft());$('key').value='';selected=result.saved_id;state={...state,...result};if(activate){state={...state,...await api('activate',{id:selected,revision:state.revision})};}await refresh();edit(state.profiles.find(p=>p.id===selected));notice(activate?'已启用，下一条聊天请求使用此模型。':'已保存；尚未切换当前模型。');}
+$('search').oninput=render;$('new').onclick=()=>{edit(null);notice('请选择提供商或填写自定义地址。');};
+$('save').onclick=()=>run(()=>save(false));$('apply').onclick=()=>run(()=>save(true));
+$('fetch').onclick=()=>run(async()=>{notice('正在从提供商拉取模型…');const models=await api('list',draft());$('model-options').replaceChildren(...models.map(id=>{const o=document.createElement('option');o.value=id;return o;}));if(!$('model').value&&models.length===1)$('model').value=models[0];notice('已获取 '+models.length+' 个模型，点击模型输入框选择或输入搜索。');});
+$('activate').onclick=()=>run(async()=>{if(!selected)throw Error('请先保存配置。');await api('activate',{id:selected,revision:state.revision});await refresh();notice('已切换到已保存配置；表单未保存的修改不会生效。');});
+$('default').onclick=()=>run(async()=>{await api('activate',{id:null,revision:state.revision});await refresh();notice('已恢复原部署配置。');});
+$('delete').onclick=()=>run(async()=>{if(!selected)throw Error('请先选择配置。');if(!confirm('删除此配置及保存在服务器的密钥？'))return;await api('delete',{id:selected,revision:state.revision});selected=null;await refresh();edit(null);notice('已删除。');});
+run(refresh);
+</script></html>

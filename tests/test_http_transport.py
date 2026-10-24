@@ -6,6 +6,8 @@ from unittest.mock import patch
 
 from test_bot import plugin
 from src.plugins.chat_and_draw.http_transport import request_json, HttpFailure
+from src.plugins.chat_and_draw.rate_limit import CooldownError, EndpointGate
+import time
 
 
 class TransportTests(unittest.IsolatedAsyncioTestCase):
@@ -23,6 +25,8 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
                 return web.json_response({}, status=403)
             if self.mode == "rate":
                 return web.json_response({}, status=429, headers={"Retry-After": "120"})
+            if self.mode == 'rate-once' and self.calls == 1:
+                return web.json_response({}, status=429, headers={'Retry-After':'0'})
             if self.mode == "slow" and self.calls == 1:
                 await asyncio.sleep(.8)
             if self.mode == "slow-retry":
@@ -88,6 +92,28 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HttpFailure):
             await self.call()
         self.assertEqual(self.calls, 1)
+
+    async def test_shared_cooldown_prevents_next_chat_from_hitting_provider(self):
+        self.mode='rate'
+        with self.assertRaises(HttpFailure):
+            await self.call()
+        with self.assertRaises(CooldownError):
+            await self.call()
+        self.assertEqual(self.calls,1)
+        self.assertFalse(any('NEVER_LOG_THIS' in str(detail) for detail,_ in self.events))
+
+    async def test_429_recovery_probe_retries_once_then_resets(self):
+        self.mode='rate-once'
+        def short_delay(gate,after=None):
+            gate.strikes+=1
+            gate.until=time.monotonic()+.02
+            return .02
+        with patch.object(EndpointGate,'penalize',short_delay):
+            result=await request_json(self.url,{},self.headers,timeout=5,observer=self.observe)
+        self.assertEqual(result,{'ok':True})
+        self.assertEqual(self.calls,2)
+        self.assertIn('cooldown_ms',self.events[0][0])
+        self.assertEqual(await self.call(),{'ok':True})
 
     async def test_header_wait_timeout_retries_within_overall_budget(self):
         self.mode = "slow"

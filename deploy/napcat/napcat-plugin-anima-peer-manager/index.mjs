@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { registerModels } from './models.mjs?v=1.1.0';
 
 const MAX_IDS = 1000;
 export function parseIds(value) {
@@ -95,6 +96,7 @@ export async function plugin_set_config(ctx, config) {
   await plugin_get_config(ctx);
 }
 export async function plugin_init(ctx) {
+  registerModels(ctx);
   // Read-only until the operator saves in NapCat; never sends QQ messages.
   await plugin_get_config(ctx);
   ctx.logger.info('AnimaBot 群号与QQ管理已加载；请在插件配置中批量编辑并保存。');

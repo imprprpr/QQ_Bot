@@ -19,6 +19,9 @@ from .image_history import load_image
 from .conversation import DIALOGUE_STYLE, dialogue_context
 from .code_analysis import QQ_TEXT_PROMPT, CODE_ANALYSIS_PROMPT, needs_code_analysis
 from .qq_text import qq_plain_text
+from .model_provider import active_profile, ManagedClient
+from .rate_limit import CooldownError
+from .model_request import complete
 from .incoming_images import normalize_image
 from .local_client import local_client
 from .config import feature_enabled
@@ -33,10 +36,17 @@ def direct_vision() -> bool:
 
 
 def vision_model():
-    return os.getenv("VISION_MODEL", "").strip() or MODEL
+    explicit = os.getenv("VISION_MODEL", "").strip()
+    profile = active_profile() if not os.getenv('VISION_API_KEY', '').strip() else None
+    if profile:
+        return profile['model']
+    return explicit or (profile['model'] if profile else MODEL)
 
 
 def get_client(vision=False):
+    profile = active_profile()
+    if profile and (not vision or not os.getenv('VISION_API_KEY', '').strip()):
+        return ManagedClient(profile)
     custom = local_client(vision=vision)
     if custom is not None:
         return custom
@@ -113,6 +123,9 @@ async def close_clients():
 
 
 def provider_name():
+    profile = active_profile()
+    if profile:
+        return profile['name']
     if os.getenv("LLM_CLIENT_FACTORY", "").strip():
         return os.getenv("LLM_BACKEND_LABEL", "local-adapter")
     return "openai-compatible"
@@ -210,7 +223,7 @@ async def get_image_description(image_b64_list: list, context_text: str = "") ->
         messages = [{"role": "user", "content": content}]
 
         logger.debug("Vision request: model={}", model)
-        response = await asyncio.wait_for(get_client(vision=True).chat.completions.create(
+        response = await asyncio.wait_for(complete(get_client(vision=True), LLM_TIMEOUT,
             model=model,
             messages=messages,
             max_tokens=max(1, int(os.getenv("VISION_MAX_TOKENS", "2048"))),
@@ -286,20 +299,23 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
     if ambient:
         output_budget = min(180, output_budget)
     started = time.monotonic()
-    logger.info("Chat request started: provider={}, model={}", provider_name(), MODEL)
     try:
-        await record("model", "started", provider=provider_name(), model=MODEL)
+        profile = active_profile()
+        current_model = profile['model'] if profile else MODEL
+        client = ManagedClient(profile) if profile else get_client()
+        logger.info("Chat request started: model={}", current_model)
+        await record("model", "started", provider=profile['name'] if profile else provider_name(), model=current_model)
         if code_analysis:
             await record("code-analysis", "started", repository_tools=False, output_format="qq-plain-text")
         messages = build_messages(current_system_prompt, messages_history)
-        response = await asyncio.wait_for(get_client().chat.completions.create(
-            model=MODEL,
+        response = await asyncio.wait_for(complete(client, LLM_TIMEOUT,
+            model=current_model,
             messages=messages,
             max_tokens=output_budget,
             temperature=min(.3, float(os.getenv("LLM_TEMPERATURE", "0.7"))) if code_analysis else float(os.getenv("LLM_TEMPERATURE", "0.7")),
             extra_body=extra_parameters()
         ), timeout=LLM_TIMEOUT)
-        await record_usage(response, MODEL)
+        await record_usage(response, current_model)
         await record("model", "completed", elapsed=round(time.monotonic() - started, 3))
         if code_analysis:
             content = response_content(response)
@@ -313,6 +329,9 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
                        time.monotonic() - started)
         return ("" if silent_failure else ServiceNotice("这次回复等得有点久，模型服务暂时没有响应，请稍后再试。")), None, None, False
     except Exception as e:
-        await record("model", "failed", error=type(e).__name__)
+        status = getattr(e, 'status_code', getattr(e, 'status', None))
+        await record("model", "failed", error=type(e).__name__, http_status=status)
         logger.warning("Chat request failed: {}", type(e).__name__)
+        if status == 429:
+            return ("" if silent_failure else ServiceNotice("模型服务正在限流，已暂停密集重试，请稍等片刻再聊。")), None, None, False
         return ("" if silent_failure else ServiceNotice("聊天服务暂时没有返回有效结果，请稍后再试。")), None, None, False

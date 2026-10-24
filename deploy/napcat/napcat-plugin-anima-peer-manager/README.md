@@ -46,3 +46,19 @@ python -m unittest discover -s tests -p test_peer_config.py
 ```
 
 参考：[NapCat 官方插件配置文档](https://napneko.github.io/develop/plugin/start-webui)。
+
+## 模型提供商页面（1.1.0）
+
+NapCat 的“扩展页面”中打开“AnimaBot 模型提供商”。支持 OpenAI Chat Completions 兼容接口；预设可自动填写地址，
+填写密钥后拉取 `/models`，选择或手动输入模型 ID，再点击“保存并启用”。支持多个配置及恢复部署默认。
+列表可能包含非聊天模型，列出模型不保证账号有聊天权限。Anthropic 原生协议、订阅登录等不属于兼容接口。
+
+接口使用 NapCat WebUI 登录鉴权，密钥不通过读取接口回显。数据保存到 `ctx.configPath + '.models.json'`，
+权限为0640，不在静态资源目录。Bot 配置 `BOT_MODEL_CONFIG_FILE` 为此文件的宿主机路径后，每次请求读取，
+新请求即时生效，正在进行的请求保留原配置；配置损坏时拒绝调用，不自动切换到另一家付费接口。
+共享目录应只允许 NapCat 与 Bot 的运行用户访问；两者用户不同时，为目录设置专用共享组与 setgid，
+确保 Bot 能读取0640文件。不要公开此文件或加入 Git。恢复部署默认仅取消页面覆盖，不修改原环境配置。
+
+提供商说明：[NapCat 页面和鉴权路由](https://napneko.github.io/develop/plugin/start-webui)、
+[DeepSeek](https://api-docs.deepseek.com/)、[硅基流动](https://docs.siliconflow.cn/docs/userguide/quickstart)、
+[OpenRouter](https://openrouter.ai/docs/api/api-reference/models/get-models)、[Gemini兼容接口](https://ai.google.dev/gemini-api/docs/openai)。
