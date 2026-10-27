@@ -43,6 +43,8 @@ class Session:
     user_id: str = ''
     private: bool = True
     character: str | None = None
+    persona_binding_target: str = ''
+    persona_binding_previous: str | None = None
     last_image_prompt: str | None = None
     last_sticker_time: float = 0
     history: list[dict] = field(default_factory=list)
@@ -60,6 +62,8 @@ class Session:
     proactive_last_text: str = ''
     proactive_topics: list[str] = field(default_factory=list)
     proactive_schedule_revision: str = ''
+    proactive_last_result: str = ''
+    proactive_last_result_at: float = 0
 
     def touch(self):
         self.proactive_unanswered = False
@@ -138,6 +142,27 @@ class SessionStore:
                         setattr(session, name, value)
                 elif row:
                     conn.execute('INSERT OR IGNORE INTO role_states VALUES (?,?,?,?)', (key, session.character, json.dumps(self._role_data(session), ensure_ascii=False), time.time()))
+                from .personas import binding
+                try:
+                    parts=json.loads(key)
+                    bot_id=session.bot_id or parts[0]
+                    user_id=session.user_id or parts[-1]
+                except (ValueError,TypeError,IndexError,KeyError):
+                    bot_id,user_id=session.bot_id,session.user_id
+                assigned=binding(bot_id,user_id) if bot_id and user_id else None
+                if assigned != (session.persona_binding_target or None) or (assigned and session.character != assigned):
+                    target=assigned or session.persona_binding_previous or self.role_id()
+                    if assigned and not session.persona_binding_target:
+                        session.persona_binding_previous=session.character
+                    session.persona_binding_target=assigned or ''
+                    if target!=session.character:
+                        self._save_conn(conn,session)
+                        role=conn.execute('SELECT data FROM role_states WHERE session_key=? AND character=?',(key,target)).fetchone()
+                        session.character=target
+                        values=json.loads(role[0]) if role else {'history':[],'last_image_prompt':None,'memories':[],'summary':''}
+                        for name,value in values.items():setattr(session,name,value)
+                    if not assigned:session.persona_binding_previous=None
+                    self._save_conn(conn,session)
                 if row and (not json.loads(row[0]).get('proactive_default_applied') or any(name in json.loads(row[0]) for name in ROLE_FIELDS)):
                     conn.execute('UPDATE sessions SET data=? WHERE key=?', (json.dumps(self._metadata(session), ensure_ascii=False), key))
                 return session
@@ -190,10 +215,25 @@ class SessionStore:
                 snapshot.proactive_attempts = (snapshot.proactive_attempts if snapshot.proactive_day == day else 0) + 1
                 snapshot.proactive_day = day
                 snapshot.proactive_last_attempt = epoch
+                snapshot.proactive_last_result = 'generating'
+                snapshot.proactive_last_result_at = epoch
                 snapshot.proactive_topics = (snapshot.proactive_topics + [topic])[-3:]
                 self._save_conn(conn, snapshot)
                 return snapshot
         return await asyncio.to_thread(reserve)
+
+    async def proactive_result(self,key,attempt,result):
+        """Update result metadata without overwriting concurrent user/role changes."""
+        def write():
+            self.initialize()
+            with self.database.transaction() as conn:
+                row=conn.execute('SELECT data FROM sessions WHERE key=?',(key,)).fetchone()
+                if not row:return
+                data=json.loads(row[0])
+                if data.get('proactive_last_attempt')!=attempt:return
+                data.update(proactive_last_result=result,proactive_last_result_at=time.time())
+                conn.execute('UPDATE sessions SET data=? WHERE key=?',(json.dumps(data,ensure_ascii=False),key))
+        await asyncio.to_thread(write)
 
     async def switch_character(self, session, character, greeting=''):
         """Persist old role and select/restore the new role in one transaction."""

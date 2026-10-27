@@ -29,6 +29,7 @@ os.environ["BOT_INTERACTION_CONFIG_FILE"] = ""  # Offline fixtures never read de
 os.environ["BOT_MODEL_CONFIG_FILE"] = ""
 os.environ["BOT_PROACTIVE_CONFIG_FILE"] = ""
 os.environ["BOT_PARTICIPATION_CONFIG_FILE"] = ""
+os.environ["BOT_PERSONA_CONFIG_FILE"] = ""
 os.environ["DRAW_ENABLED"] = "true"
 os.environ["TTS_ENABLED"] = "true"
 os.environ["TTS_BACKEND"] = "gpt-sovits"

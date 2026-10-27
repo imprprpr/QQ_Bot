@@ -1,6 +1,7 @@
 """Bot lifecycle callbacks."""
 import asyncio
 import random
+import re
 import time
 from contextlib import suppress
 from datetime import datetime
@@ -40,32 +41,49 @@ class BackgroundLifecycle:
                     return
                 session = reserved
                 last_interaction, character = session.last_interaction, session.character
+            phase='generating'
             try:
                 bot = self.get_bot(session.bot_id)
                 history = [{'role': m['role'], 'content': m['content']} for m in session.history[-6:]]
                 history.append({'role': 'user', 'content': opener_prompt(session, topic)})
                 (reply, _, _, _) = await self.get_chat_response(history, card=self.current_card(session),
                     silent_failure=True, memory_context={'memories': session.memories, 'summary': session.summary})
+                raw=reply
                 reply = '' if isinstance(reply, ServiceNotice) else opener_text(reply, session.proactive_last_text)
                 if not reply:
+                    if isinstance(raw,ServiceNotice):
+                        result=raw.reason
+                    elif re.fullmatch(r'[\[【]?(?:不打扰|不参与)[\]】]?[。.!！]*',str(raw).strip()):
+                        result='model_declined'
+                    else:
+                        result='empty_result' if not str(raw or '').strip() else 'filtered'
+                    await self.store.proactive_result(key,epoch,result)
                     return
                 async with self.store.lock(key):
                     current = await self.store.load(key)
                     latest = settings()
                     if (latest['_revision'] != config['_revision']
                             or not in_window(local_now(latest) if realtime else now, latest)):
+                        await self.store.proactive_result(key,epoch,'cancelled')
                         return
                     # A human message or role/opt-in change during generation cancels this greeting.
                     if (not current.proactive or current.proactive_unanswered
                             or current.last_interaction != last_interaction or current.character != character):
+                        await self.store.proactive_result(key,epoch,'cancelled')
                         return
+                    current.proactive_last_result='sending'
+                    current.proactive_last_result_at=time.time()
+                    phase='sending'
                     current.proactive_unanswered = True
                     current.proactive_last_text = reply
                     await self.store.save(current)  # Ambiguous send failures must not duplicate a greeting.
                     await asyncio.wait_for(bot.send_private_msg(user_id=int(current.user_id), message=reply), 20)
+                    current.proactive_last_result='sent'
+                    current.proactive_last_result_at=time.time()
                     current.history = trim_history(current.history + [{'role': 'assistant', 'content': reply}])
                     await self.store.save(current)
             except Exception as exc:
+                await self.store.proactive_result(key,epoch,'send_failed' if phase=='sending' else 'service_error')
                 logger.warning('Proactive message failed: {}', type(exc).__name__)
             # At most one reserved attempt per cycle, including failures/skips.
             return

@@ -30,6 +30,9 @@ class CommandHandlers:
         async with self.store.lock(key):
             session = await self.store.load(key)
             self.identify(session, bot, event)
+            if session.persona_binding_target:
+                await self.cmd_switch.send('当前人设由 NapCat 管理页指定；请先在管理页修改或解除分配。')
+                return
             selected = next((k for (k, value) in tavern_manager.cards.items() if value is card))
             (session, restored) = await self.store.switch_character(session, selected, card.first_mes)
             await self.cmd_switch.send(f'已切换至 {card.name}！\n' + ('已恢复你与这个角色之前的记忆。' if restored else card.first_mes))
@@ -154,6 +157,9 @@ class CommandHandlers:
                     await self.enqueue_draw(self.store, bot, event, tags)
 
     def current_card(self, session):
+        if session.character and session.character.startswith('persona-'):
+            from .personas import card
+            return card(session.character)
         if session.character:
             card = tavern_manager.cards.get(session.character)
             if card:

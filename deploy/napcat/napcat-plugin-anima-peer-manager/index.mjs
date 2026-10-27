@@ -1,13 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { registerModels } from './models.mjs?v=1.5.0';
+import { registerModels } from './models.mjs?v=1.6.0';
 
-import { registerProactive } from './proactive.mjs?v=1.5.0';
+import { registerProactive } from './proactive.mjs?v=1.6.0';
 
-import { registerParticipation } from './participation.mjs?v=1.5.0';
+import { registerParticipation } from './participation.mjs?v=1.6.0';
 
-import { registerMonitor } from './monitor.mjs?v=1.5.0';
+import { registerMonitor } from './monitor.mjs?v=1.6.0';
+
+import { registerPersonas } from './personas.mjs?v=1.6.0';
 
 const MAX_IDS = 1000;
 export function parseIds(value) {
@@ -106,6 +108,7 @@ export async function plugin_init(ctx) {
   registerProactive(ctx);
   registerParticipation(ctx);
   registerMonitor(ctx);
+  registerPersonas(ctx);
   // Read-only until the operator saves in NapCat; never sends QQ messages.
   await plugin_get_config(ctx);
   ctx.logger.info('AnimaBot 群号与QQ管理已加载；请在插件配置中批量编辑并保存。');

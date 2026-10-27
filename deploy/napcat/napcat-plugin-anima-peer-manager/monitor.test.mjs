@@ -27,7 +27,7 @@ test('fixed loopback read-only route, token stays server-side',async()=>{
 });
 test('authenticated route only and error messages hide private bridge data',async()=>{
  const routes=[];registerMonitor({configPath:'/missing/private',router:{get:(...a)=>routes.push(a)}});
- assert.equal(routes.length,1);assert.equal(routes[0][0],'/participation/status');
+ assert.equal(routes.length,3);assert.equal(routes[0][0],'/participation/status');
  let code,body;const res={setHeader(){},status(n){code=n;return this;},json(v){body=v;}};
  await routes[0][1]({headers:{origin:'https://evil.example',host:'localhost'}},res);
  assert.equal(code,403);

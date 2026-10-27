@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="#tech-stack">技术栈</a> · <a href="#features">特性速览</a> · <a href="#quick-start">安装部署</a> · <a href="#model-api">模型配置</a> · <a href="#image-generation">图片生成</a> · <a href="#voice-stickers">语音与表情</a><br>
-  <a href="#commands">命令索引</a> · <a href="#group-chat">群聊参与</a> · <a href="#proactive">主动问候</a> · <a href="#bot-interaction">机器人斗嘴</a> · <a href="#memory">角色记忆</a> · <a href="#code-analysis">代码分析</a> · <a href="#admin">管理界面</a> · <a href="#troubleshooting">常见排障</a><br>
+  <a href="#commands">命令索引</a> · <a href="#group-chat">群聊参与</a> · <a href="#proactive">主动问候</a> · <a href="#bot-interaction">机器人斗嘴</a> · <a href="#personas">人设库与QQ分配</a> · <a href="#memory">角色记忆</a> · <a href="#code-analysis">代码分析</a> · <a href="#admin">管理界面</a> · <a href="#troubleshooting">常见排障</a><br>
   <a href="#architecture">架构</a> · <a href="#data">数据持久化</a> · <a href="#cloud-server">云服务器</a> · <a href="#systemd">systemd 后台管理</a> · <a href="#documentation">文档索引</a>
 </p>
 
@@ -711,3 +711,15 @@ NapCat 页面按三类展示；v1策略读取时迁移为v2，保留既有bot设
 限额/冷却拦截、随机未抽中、模型明确返回“不参与”、空结果、模型超时/服务限流、QQ发送结果分别记录。只保留消息ID、群/成员ID、类型和原因，不记录聊天正文或凭据；历史最多3000条、24小时，页面显示最近200条中的筛选结果。上线前的未回复不能追溯，处理中断的记录会标注状态未结束，不推测为模型拒绝。
 
 需要一次性配置 NapCat 侧私有状态连接文件，详见[插件说明](deploy/napcat/napcat-plugin-anima-peer-manager/README.md)。Bot离线或连接配置异常时页面明确显示状态不可用，不回退到零用量。
+
+
+### 私聊主动聊天实时状态
+
+NapCat → 扩展页面 → **AnimaBot 主动聊天**，显示每私聊及全局的今日已用/剩余次数、冷却倒计时、下次最早预计搭话时间，以及未到时间、额度用尽、上次未回复等原因。状态每5秒刷新，不调用模型，不重置计数或随机计划；预计时间不是发送保证。尝试次数包含失败与模型选择不打扰，按页面配置时区的自然日统计。
+
+<a id="personas"></a>
+### 人设库与QQ分配
+
+NapCat → 扩展页面 → **AnimaBot 人设与用户分配**，选择内置模板或新建人设，填写名称和背景/性格后，停止输入约1秒自动保存为私有预设。下次可从列表直接选择、编辑或复制。再选择人设、填写用户QQ并保存分配，后续私聊、群聊与主动聊天即采用该设定，无需重启。
+
+管理员分配优先于用户/switch；解除后恢复分配前人设。角色历史与记忆相互隔离，切回旧角色可恢复，编辑同一预设则延续其记忆。人设切换不会更换语音模型。首次连接 `BOT_PERSONA_CONFIG_FILE` 和共享文件权限见[插件说明](deploy/napcat/napcat-plugin-anima-peer-manager/README.md)。用户自建角色和QQ分配不提交到Git。

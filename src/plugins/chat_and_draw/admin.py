@@ -83,6 +83,18 @@ def register_admin(app, get_store):
         from .participation_status import snapshot
         return await asyncio.to_thread(snapshot,get_store().path)
 
+    @app.get("/manage/api/proactive", include_in_schema=False)
+    async def proactive_status(request: Request):
+        await guard(request)
+        from .proactive_status import snapshot
+        return await asyncio.to_thread(snapshot,get_store().path)
+
+    @app.get("/manage/api/persona-catalog", include_in_schema=False)
+    async def persona_catalog(request: Request):
+        await guard(request)
+        from .personas import catalog
+        return await asyncio.to_thread(catalog,get_store().path)
+
     @app.get("/manage/api/overview", include_in_schema=False)
     async def overview(request: Request):
         await guard(request)

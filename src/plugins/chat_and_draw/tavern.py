@@ -130,7 +130,7 @@ class TavernManager:
             os.makedirs(CHARACTERS_DIR, exist_ok=True)
 
     def reload_cards(self):
-        self.cards.clear()
+        loaded = {}
         self.ensure_characters_dir()
 
         for filename in os.listdir(CHARACTERS_DIR):
@@ -139,9 +139,16 @@ class TavernManager:
                 card = TavernCard.from_file(filepath)
                 if card:
                     card_id = os.path.splitext(filename)[0]
-                    self.cards[card_id] = card
+                    loaded[card_id] = card
                     # 同时支持通过卡片名索引
-                    self.cards[card.name] = card
+                    loaded[card.name] = card
+
+        from .personas import cards
+        try:
+            loaded.update(cards(loaded))
+        except ValueError:
+            pass  # Management UI reports a damaged managed file; do not invent roles.
+        self.cards = loaded
 
         # 默认优先加载环境变量配置的角色或 'ling'
         default_char = os.getenv("DEFAULT_CHARACTER", "ling")
@@ -200,9 +207,7 @@ class TavernManager:
         self.reload_cards()
         seen = set()
         result = []
-        for filename in os.listdir(CHARACTERS_DIR):
-            card_id = os.path.splitext(filename)[0]
-            card = self.cards.get(card_id)
+        for card in self.cards.values():
             if card and card.name not in seen:
                 seen.add(card.name)
                 result.append(f"【{card.name}】 -> 指令：/switch {card.name}")
