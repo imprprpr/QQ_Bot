@@ -20,6 +20,7 @@ from .stickers import normalize_category
 from .runtime import operation, record
 from .incoming_images import read_image
 from .group_chat import GroupChat
+from .participation_status import DecisionLog
 
 class ChatFlow:
 
@@ -67,6 +68,8 @@ class ChatFlow:
         if group_context and group_context['mode'] == 'bot-interaction':
             await self.handle_bot_interaction(bot, group_context, event.get_message().extract_plain_text(), getattr(event, 'message_id', None))
             return
+        async def outcome(reason):
+            await asyncio.to_thread(DecisionLog(self.store.path).finish,group_context,reason)
         ambient = bool(group_context and group_context['mode'] in {'ambient', 'followup'})
         (text_parts, image_urls, memory_text_parts) = ([], [], [])
         for seg in event.get_message():
@@ -94,6 +97,7 @@ class ChatFlow:
             self.identify(session, bot, event)
             async with operation(self.runtime, key, session.character, text or '[图片]', getattr(event, 'message_id', None)) as scope:
                 if scope is None:
+                    await outcome('cancelled')
                     return
                 session.touch()
                 await self.store.save(session)
@@ -140,15 +144,26 @@ class ChatFlow:
                     (reply, draw, sticker, voice) = ('这张表情包我这边没识别成功，暂时还读不到内容。', None, None, False)
                 else:
                     (reply, draw, sticker, voice) = await self.get_chat_response(session.history, card=self.current_card(session), **context_args)
+                model_reason = getattr(reply,'reason',None) if isinstance(reply,ServiceNotice) else None
+                if model_reason:
+                    await outcome(model_reason)
+                    if ambient:
+                        return
+                if group_context and not model_reason and reply.strip().strip('。.!！ ') == '[不参与]':
+                    await outcome('model_declined')
+                    return
                 if ambient:
+                    declined = reply.strip().strip('。.!！ ') == '[不参与]'
                     reply = reply[:160] if code_analysis else ' '.join(reply.split())[:160]
-                    if reply == '[不参与]':
+                    if declined:
                         reply = ''
                     (draw, sticker, voice) = (None, None, False)
                     if not reply:
+                        await outcome('model_declined' if declined else 'empty_result')
                         return
                 if group_context and group_context['mode'] != 'mention':
                     if not self.group_chat.allowed(event) or (ambient and not feature_enabled('GROUP_CHAT_FOLLOWUP_ENABLED' if group_context['mode']=='followup' else 'GROUP_CHAT_AMBIENT_ENABLED')):
+                        await outcome('cancelled')
                         return
                 service_notice = isinstance(reply, ServiceNotice)
                 if code_analysis:
@@ -160,9 +175,12 @@ class ChatFlow:
                     bubble_limit = 1 if ambient else 2 if group_context or brief_chat(text) else 3
                     delivery = await self.send_reply(reply, draw, sticker, (voice or explicit_voice) and (not ambient) and (not service_notice) and (not code_analysis), allow_sticker=allow_sticker, defer_draw=partial(self.enqueue_draw, self.store, bot, event), character=session.character, sticker_context=text + ' ' + reply, text_mode='technical' if code_analysis or service_notice else 'chat', bubble_limit=bubble_limit)
                 except Exception as exc:
+                    await outcome('send_failed')
                     log_send_error('reply-pipeline', exc)
                     await record('reply-pipeline', 'failed', error=type(exc).__name__)
                     return
+                if not model_reason:
+                    await outcome('sent' if isinstance(delivery,DeliveryResult) and (delivery.text_sent or delivery.sticker_sent or delivery.image_sent) else 'queued' if isinstance(delivery,DeliveryResult) and delivery.image_queued else 'empty_result' if not reply and not draw and not sticker else 'send_failed')
                 if isinstance(delivery, DeliveryResult):
                     if delivery.sticker_sent:
                         session.last_sticker_time = time.time()

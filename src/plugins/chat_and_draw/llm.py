@@ -249,7 +249,11 @@ async def get_image_description(image_b64_list: list, context_text: str = "") ->
 from .tavern import tavern_manager
 
 class ServiceNotice(str):
-    """Operational fallback: deliver as text but never store as role dialogue."""
+    """Operational fallback, including typed empty notices for silent requests."""
+    def __new__(cls,text='',reason='service_error'):
+        obj=super().__new__(cls,text)
+        obj.reason=reason
+        return obj
 
 
 async def get_chat_response(messages_history: list, card=None, *, silent_failure=False, visual_context=None, memory_context=None, group_context=None) -> tuple[str, str | None, str | None, bool]:
@@ -333,7 +337,7 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
                 text = re.split(r'<\s*(?:draw|sticker|voice)\b', raw, maxsplit=1, flags=re.I)[0].strip()
                 if text:
                     return qq_plain_text(text + '\n（这条回复未完整生成，可以让我继续。）'), None, None, False
-            return ('' if silent_failure else ServiceNotice('模型生成达到了输出上限，未取得完整回复。请缩小问题范围后再试。')), None, None, False
+            return ServiceNotice('' if silent_failure else '模型生成达到了输出上限，未取得完整回复。请缩小问题范围后再试。',reason='output_limit'), None, None, False
         if code_analysis:
             content = response_content(response)
             if not isinstance(content, str) or not content.strip():
@@ -344,11 +348,11 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
         await record("model", "failed", error="TimeoutError", elapsed=round(time.monotonic() - started, 3))
         logger.warning("Chat model timed out after {:.1f}s; ComfyUI was not submitted",
                        time.monotonic() - started)
-        return ("" if silent_failure else ServiceNotice("这次回复等得有点久，模型服务暂时没有响应，请稍后再试。")), None, None, False
+        return ServiceNotice("" if silent_failure else "这次回复等得有点久，模型服务暂时没有响应，请稍后再试。",reason="model_timeout"), None, None, False
     except Exception as e:
         status = getattr(e, 'status_code', getattr(e, 'status', None))
         await record("model", "failed", error=type(e).__name__, http_status=status)
         logger.warning("Chat request failed: {}", type(e).__name__)
         if status == 429:
-            return ("" if silent_failure else ServiceNotice("模型服务正在限流，已暂停密集重试，请稍等片刻再聊。")), None, None, False
-        return ("" if silent_failure else ServiceNotice("聊天服务暂时没有返回有效结果，请稍后再试。")), None, None, False
+            return ServiceNotice("" if silent_failure else "模型服务正在限流，已暂停密集重试，请稍等片刻再聊。",reason="provider_rate_limited"), None, None, False
+        return ServiceNotice("" if silent_failure else "聊天服务暂时没有返回有效结果，请稍后再试。"), None, None, False

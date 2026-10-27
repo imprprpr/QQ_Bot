@@ -11,6 +11,7 @@ import unicodedata
 
 from .config import feature_enabled
 from .database import database
+from .participation_status import DecisionLog
 
 
 def number(name, default, minimum=0):
@@ -26,6 +27,7 @@ class GroupChat:
 
     @contextmanager
     def connect(self):
+        DecisionLog(self.path).initialize()
         self.database.initialize('group-chat-v2', '''
         CREATE TABLE IF NOT EXISTS group_chat_lines (
           id INTEGER PRIMARY KEY, room TEXT, message_id TEXT, speaker TEXT, text TEXT, created REAL,
@@ -99,6 +101,10 @@ class GroupChat:
         if str(event.get_user_id()) == str(bot.self_id):
             return None
         room = self.room(bot, event)
+        participant = str(event.get_user_id())
+        external_id = getattr(event,'message_id',None)
+        async def skipped(mode,reason):
+            await asyncio.to_thread(DecisionLog(self.path).add,room,participant,mode,reason,external_id=external_id)
         original = getattr(event, 'original_message', None)
         message = original if original is not None else event.get_message()
         text = unicodedata.normalize('NFKC', message.extract_plain_text())
@@ -107,15 +113,21 @@ class GroupChat:
         reply = getattr(event, 'reply', None)
         replying = str(getattr(getattr(reply, 'sender', None), 'user_id', '')) == str(bot.self_id)
         if mentioned or replying or (original is None and event.is_tome()):
-            result = await asyncio.to_thread(self.reserve, room, 'mention', time.time())
+            result = await asyncio.to_thread(self.reserve, room, 'mention', time.time(), participant=participant, external_id=external_id)
             result['current_speaker'] = str(event.get_user_id())
             return result
-        if not self.allowed(event) or not text.strip() or text.lstrip().startswith(('/', '／')):
+        if not self.allowed(event):
+            await skipped('ambient','disabled')
+            return None
+        if not text.strip() or text.lstrip().startswith(('/', '／')):
+            await skipped('ambient','not_addressed')
             return None
         # A message addressed to someone else is not an invitation to interrupt.
         if any(segment.type == 'at' for segment in message):
+            await skipped('ambient','not_addressed')
             return None
         if reply is not None and getattr(getattr(reply, 'sender', None), 'user_id', None) is not None:
+            await skipped('ambient','not_addressed')
             return None
         aliases = [unicodedata.normalize('NFKC', value.strip()) for value in
                    os.getenv('GROUP_CHAT_NICKNAMES', '小灯,玲').split(',') if value.strip()]
@@ -127,13 +139,15 @@ class GroupChat:
         question = bool(re.search(r'[?？]|怎么|为什么|为啥|如何|能不能|有没有|有谁|谁知道|求助|求推荐|怎么办|有人吗|什么建议|推荐一下|能帮忙', text))
         if mode in {'ambient', 'followup'}:
             if not feature_enabled('GROUP_CHAT_FOLLOWUP_ENABLED' if mode == 'followup' else 'GROUP_CHAT_AMBIENT_ENABLED'):
+                await skipped(mode,'disabled')
                 return None
             # Questions and short follow-ups are evaluated deliberately; ordinary
             # public conversation is sampled before any model call.
             if mode == 'ambient' and not question:
                 if len(text.strip()) < 4 or random.random() >= min(1, number('GROUP_CHAT_PROBABILITY', .25)):
+                    await skipped(mode,'not_sampled')
                     return None
-        result = await asyncio.to_thread(self.reserve, room, mode, now, question, str(event.get_user_id()))
+        result = await asyncio.to_thread(self.reserve, room, mode, now, question, participant, external_id)
         if result is not None:
             result['current_speaker'] = str(event.get_user_id())
         return result
@@ -144,9 +158,12 @@ class GroupChat:
             return bool(last and last[0].endswith(':to:' + str(user))
                         and now - last[1] <= number('GROUP_CHAT_FOLLOWUP_WINDOW', 300))
 
-    def reserve(self, room, mode, now, question=False, participant=''):
+    def reserve(self, room, mode, now, question=False, participant='', external_id=None):
         """Reserve before generation; failed calls still count, including after restarts."""
         with self.connect() as conn:
+            def blocked(reason,retry_at=0):
+                DecisionLog.write(conn,room,participant,mode,reason,now,retry_at,external_id)
+                return None
             lines = conn.execute('SELECT speaker,text,created FROM group_chat_lines WHERE room=? AND created>=? '
                                  'ORDER BY id DESC LIMIT 12', (room, now - 1800)).fetchall()[::-1]
             if mode != 'mention':
@@ -156,7 +173,7 @@ class GroupChat:
                     last = conn.execute('SELECT MAX(last_attempt) FROM group_chat_mode_limits WHERE room=? AND participant=?', (room,participant)).fetchone()
                 cooldown = number('GROUP_CHAT_COOLDOWN', 180) if mode == 'ambient' else number('GROUP_CHAT_FOLLOWUP_COOLDOWN', 5) if mode == 'followup' else number('GROUP_CHAT_NICKNAME_COOLDOWN', 45)
                 if last and last[0] is not None and now-last[0] < cooldown:
-                    return None
+                    return blocked('cooldown',last[0]+cooldown)
                 # Each mode has its own durable pool; no shared cap can starve a conversation.
                 prefix = 'GROUP_CHAT_' + mode.upper() + '_'
                 defaults = {'nickname':(20,40,60,120), 'followup':(30,60,120,240), 'ambient':(4,10,12,24)}[mode]
@@ -169,17 +186,22 @@ class GroupChat:
                             args.append(room)
                         count = conn.execute(sql,args).fetchone()[0]
                         key = prefix + ('GLOBAL_' if global_scope else '') + ('DAILY_LIMIT' if daily else 'HOURLY_LIMIT')
-                        if count >= number(key,defaults[(2 if daily else 0)+(1 if global_scope else 0)]):
-                            return None
+                        cap = number(key,defaults[(2 if daily else 0)+(1 if global_scope else 0)])
+                        if count >= cap:
+                            expiries = sorted(r[0]+(86400 if daily else 3600) for r in conn.execute(sql.replace('COUNT(*)','created'),args))
+                            retry_at = expiries[count-int(cap)] if cap>0 else 0
+                            return blocked(('global_' if global_scope else 'room_')+('daily' if daily else 'hourly'),retry_at)
                 if mode == 'followup':
                     rounds = conn.execute('SELECT COUNT(*) FROM group_chat_turns WHERE room=? AND participant=? AND created>?',
                         (room,participant,now-number('GROUP_CHAT_FOLLOWUP_WINDOW', 300))).fetchone()[0]
-                    if rounds >= number('GROUP_CHAT_FOLLOWUP_MAX_ROUNDS', 6):
-                        return None
+                    cap=number('GROUP_CHAT_FOLLOWUP_MAX_ROUNDS',6)
+                    if rounds >= cap:
+                        expiries=sorted(r[0]+number('GROUP_CHAT_FOLLOWUP_WINDOW',300) for r in conn.execute('SELECT created FROM group_chat_turns WHERE room=? AND participant=? AND created>?',(room,participant,now-number('GROUP_CHAT_FOLLOWUP_WINDOW',300))))
+                        return blocked('rounds',expiries[rounds-int(cap)])
                 if mode == 'ambient':
                     recent = [line for line in lines if line[2] >= now - 300 and not line[0].startswith('bot:')]
                     if not question and (len(recent) < 4 or len({line[0].split(':', 1)[0] for line in recent}) < 2):
-                        return None
+                        return blocked('inactive')
                 conn.execute('INSERT INTO group_chat_calls VALUES(?,?,?)', (room, mode, now))
                 if mode != 'ambient':
                     conn.execute('INSERT OR REPLACE INTO group_chat_mode_limits VALUES(?,?,?,?)',(room,mode,participant,now))
@@ -187,4 +209,5 @@ class GroupChat:
                     conn.execute('INSERT INTO group_chat_turns VALUES(?,?,?)',(room,participant,now))
             conn.execute('INSERT OR REPLACE INTO group_chat_limits VALUES(?,?)', (room, now))
             # Only public group messages enter this shared, expiring context.
-            return {'mode': mode, 'messages': [{'speaker': row[0], 'text': row[1]} for row in lines]}
+            decision_id=DecisionLog.write(conn,room,participant,mode,'generating',now,external_id=external_id)
+            return {'mode': mode, 'decision_id':decision_id, 'messages': [{'speaker': row[0], 'text': row[1]} for row in lines]}

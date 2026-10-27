@@ -13,6 +13,7 @@ from .config import feature_enabled
 from .database import database
 from .group_chat import number
 from .peer_config import managed
+from .participation_status import DecisionLog
 
 
 def ids(name):
@@ -30,6 +31,7 @@ class BotInteractions:
         self.database = database(path)
 
     def initialize(self):
+        DecisionLog(self.path).initialize()
         self.database.initialize('bot-interaction-v1', '''
         CREATE TABLE IF NOT EXISTS bot_interaction_rooms (
           room TEXT PRIMARY KEY, peer TEXT, rounds INTEGER, active_until REAL,
@@ -72,6 +74,7 @@ class BotInteractions:
     async def select(self, bot, event):
         peer = str(event.get_user_id())
         if not self.allowed(bot.self_id, event.group_id, peer):
+            await asyncio.to_thread(DecisionLog(self.path).add,self.room(bot.self_id,event.group_id),peer,'bot-interaction','disabled',external_id=getattr(event,'message_id',None))
             return None
         message = getattr(event, 'original_message', None)
         message = message if message is not None else event.get_message()
@@ -89,45 +92,53 @@ class BotInteractions:
                                        time.time(), 'reactive', identity, addressed)
 
     def reserve(self, bot_id, group_id, peer, now, kind, identity=None, addressed=False):
-        if kind == 'proactive' and not feature_enabled('BOT_INTERACTION_PROACTIVE_ENABLED'):
-            return None
-        if not self.allowed(bot_id, group_id, peer):
-            return None
         room = self.room(bot_id, group_id)
+        mode = 'bot-proactive' if kind=='proactive' else 'bot-interaction'
+        if (kind == 'proactive' and not feature_enabled('BOT_INTERACTION_PROACTIVE_ENABLED')) or not self.allowed(bot_id,group_id,peer):
+            DecisionLog(self.path).add(room,peer,mode,'disabled',now,external_id=identity)
+            return None
         with self.connect() as conn:
+            def blocked(reason,retry_at=0):
+                DecisionLog.write(conn,room,peer,mode,reason,now,retry_at,identity)
+                return None
             conn.execute('DELETE FROM bot_interaction_calls WHERE created<?', (now-86400,))
             conn.execute('DELETE FROM bot_interaction_rooms WHERE cooldown_until<? AND active_until<?', (now-86400, now-86400))
             if identity is not None and conn.execute('SELECT 1 FROM bot_interaction_calls WHERE room=? AND external_id=?', (room, identity)).fetchone():
-                return None
+                return blocked('duplicate')
             state = conn.execute('SELECT * FROM bot_interaction_rooms WHERE room=?', (room,)).fetchone()
             active = bool(state and now < state['active_until'])
             if active:
-                if (kind != 'reactive' or state['peer'] != str(peer) or not state['waiting']
-                        or state['rounds'] >= self.max_rounds()
-                        or now-state['last_attempt'] < number('BOT_INTERACTION_REPLY_COOLDOWN', 5, 1)):
-                    return None
+                if state['rounds'] >= self.max_rounds():
+                    return blocked('rounds',state['active_until']+number('BOT_INTERACTION_COOLDOWN',600,60))
+                if kind != 'reactive' or state['peer'] != str(peer) or not state['waiting']:
+                    return blocked('waiting',state['active_until'])
+                if now-state['last_attempt'] < number('BOT_INTERACTION_REPLY_COOLDOWN',5,1):
+                    return blocked('cooldown',state['last_attempt']+number('BOT_INTERACTION_REPLY_COOLDOWN',5,1))
                 rounds, until, cooldown = state['rounds']+1, state['active_until'], state['cooldown_until']
             else:
                 if state and now < state['active_until'] + number('BOT_INTERACTION_COOLDOWN', 600, 60):
-                    return None
+                    return blocked('cooldown',state['active_until']+number('BOT_INTERACTION_COOLDOWN',600,60))
                 if kind == 'reactive' and not addressed and random.random() >= min(1, number('BOT_INTERACTION_REPLY_PROBABILITY', .3)):
-                    return None
+                    return blocked('not_sampled')
                 rounds = 1
                 until = now + min(600, number('BOT_INTERACTION_SESSION_SECONDS', 180, 30))
                 cooldown = until + number('BOT_INTERACTION_COOLDOWN', 600, 60)
             hourly = conn.execute('SELECT COUNT(*) FROM bot_interaction_calls WHERE room=? AND created>?', (room, now-3600)).fetchone()[0]
             daily = conn.execute('SELECT COUNT(*) FROM bot_interaction_calls WHERE created>?', (now-86400,)).fetchone()[0]
-            if hourly >= number('BOT_INTERACTION_HOURLY_LIMIT', 6) or daily >= number('BOT_INTERACTION_DAILY_LIMIT', 12):
-                return None
+            if hourly >= number('BOT_INTERACTION_HOURLY_LIMIT',6):
+                return blocked('room_hourly')
+            if daily >= number('BOT_INTERACTION_DAILY_LIMIT',12):
+                return blocked('global_daily')
             if kind == 'proactive':
                 count = conn.execute("SELECT COUNT(*) FROM bot_interaction_calls WHERE kind='proactive' AND created>?", (now-86400,)).fetchone()[0]
                 if count >= number('BOT_INTERACTION_PROACTIVE_DAILY_LIMIT', 3):
-                    return None
+                    return blocked('proactive_daily')
             ticket = uuid.uuid4().hex
             conn.execute('INSERT INTO bot_interaction_calls VALUES(?,?,?,?,?)', (room, str(peer), kind, now, identity))
             conn.execute('INSERT OR REPLACE INTO bot_interaction_rooms VALUES(?,?,?,?,?,?,?,?)',
                          (room, str(peer), rounds, until, cooldown, now, 0, ticket))
-            return {'mode': 'bot-interaction', 'target': str(peer), 'group_id': str(group_id),
+            decision_id=DecisionLog.write(conn,room,peer,mode,'generating',now,external_id=identity)
+            return {'mode': 'bot-interaction', 'decision_id':decision_id, 'target': str(peer), 'group_id': str(group_id),
                     'bot_id': str(bot_id), 'room': room, 'ticket': ticket, 'kind': kind,
                     'round': rounds, 'current_speaker': str(peer)}
 

@@ -77,6 +77,12 @@ def register_admin(app, get_store):
                             headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY",
                                      "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' blob:; frame-ancestors 'none'"})
 
+    @app.get("/manage/api/participation", include_in_schema=False)
+    async def participation(request: Request):
+        await guard(request)
+        from .participation_status import snapshot
+        return await asyncio.to_thread(snapshot,get_store().path)
+
     @app.get("/manage/api/overview", include_in_schema=False)
     async def overview(request: Request):
         await guard(request)

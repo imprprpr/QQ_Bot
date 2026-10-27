@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import MessageSegment
 from .bot_interaction import ids
 from .group_chat import number
 from .llm import ServiceNotice
+from .participation_status import DecisionLog
 from .qq_text import qq_plain_text
 from .runtime import operation, record
 from .tavern import tavern_manager
@@ -18,12 +19,15 @@ class BotInteractionFlow:
     async def handle_bot_interaction(self, bot, context, text='', external_id=None):
         policy = self.bot_interactions
         sent = False
+        outcome = 'service_error'
+        phase = 'model'
         key = 'bot-interaction:' + context['room'] + ':' + context['target']
         card = tavern_manager.get_active_card()
         try:
             async with operation(self.runtime, key, getattr(card, 'name', 'bot-interaction'),
                                  text or '[主动向配置的机器人搭话]', external_id) as scope:
                 if scope is None:
+                    outcome='cancelled'
                     return
                 context = dict(context)
                 context['messages'] = await asyncio.to_thread(self.group_chat.public_context, context['room'], time.time())
@@ -32,17 +36,22 @@ class BotInteractionFlow:
                     [{'role': 'user', 'content': prompt}], card=card,
                     group_context=context, silent_failure=True)
                 if isinstance(reply, ServiceNotice):
+                    outcome=getattr(reply,'reason','service_error')
                     return
                 reply = ' '.join(qq_plain_text(reply).split())[:120]
                 if not reply or reply.strip('。.!！ ') == '[不参与]':
+                    outcome='model_declined' if reply else 'empty_result'
                     return
                 if not await asyncio.to_thread(policy.valid, context, time.time()):
+                    outcome='cancelled'
                     return
                 # User-configured target only. Model text cannot select recipients.
                 message = MessageSegment.at(context['target']) + MessageSegment.text(' ' + reply)
+                phase='send'
                 response = await asyncio.wait_for(bot.send_group_msg(
                     group_id=int(context['group_id']), message=message), 20)
                 sent = True
+                outcome='sent'
                 message_id = response.get('message_id') if isinstance(response, dict) else None
                 await scope.store.outgoing(scope, 'bot-interaction', reply, 'sent', message_id)
                 await record('bot-interaction', 'completed', target=context['target'],
@@ -51,8 +60,10 @@ class BotInteractionFlow:
                                         'bot:' + str(bot.self_id) + ':to:' + context['target'], reply, time.time())
         except Exception as exc:
             # Never retry an ambiguous QQ send; the reserved turn stays consumed.
+            outcome='sent' if sent else 'send_failed' if phase=='send' else 'service_error'
             logger.warning('Bot interaction failed: {}', type(exc).__name__)
         finally:
+            await asyncio.to_thread(DecisionLog(policy.path).finish,context,outcome)
             await asyncio.to_thread(policy.finish, context, sent, time.time())
 
     async def run_bot_interaction_once(self, now=None):
