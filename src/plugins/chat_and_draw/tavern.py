@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional
 from PIL import Image
 from . import config  # Load configuration before choosing the default character
 from .conversation import DIALOGUE_STYLE
+from .reply_style import normalize
 
 CHARACTERS_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "characters")
@@ -29,6 +30,7 @@ class TavernCard:
         self.first_mes: str = c_data.get("first_mes", "")
         self.mes_example: str = c_data.get("mes_example", "")
         self.system_prompt: str = c_data.get("system_prompt", "")
+        self.reply_style = normalize(c_data.get('reply_style'))
         self.image_profile = c_data.get('image_profile')
 
         # 世界书 (Lorebook / World Info)

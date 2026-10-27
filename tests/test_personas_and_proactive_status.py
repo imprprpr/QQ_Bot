@@ -56,6 +56,30 @@ class PersonaTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):read()
         with self.assertRaises(ValueError):test_bot.plugin.current_card(Session('x',character=ID))
 
+    async def test_style_hot_edit_reaches_model_without_switching_role_or_memory(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        self.write([{'bot_id':'*','user_id':'123','persona_id':ID}])
+        session=await self.store.load(self.key)
+        session.memories=['keep this'];await self.store.save(session)
+        create=AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(finish_reason='stop',message=SimpleNamespace(content='在听歌'))],usage=None))
+        for style,expected in [({'teasing':0,'refusal':0,'punctuation':'standard'},['调侃关闭','尽量回应','常规标点']),({'teasing':3,'refusal':2,'punctuation':'minimal'},['更爱逗人','更有主见','少句尾标点'])]:
+            self.profile['reply_style']=style;self.write([{'bot_id':'*','user_id':'123','persona_id':ID}])
+            current=await self.store.load(self.key)
+            self.assertEqual(current.character,ID);self.assertEqual(current.memories,['keep this'])
+            active=test_bot.plugin.current_card(current)
+            with patch.object(test_bot.llm,'get_client',return_value=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))):
+                await test_bot.llm.get_chat_response([{'role':'user','content':'在干嘛？'}],card=active)
+            outgoing=create.await_args.kwargs['messages'][0]['content'].split('【当前人设的聊天偏好】')[-1]
+            for label in expected:self.assertIn(label,outgoing)
+        self.assertEqual(create.await_count,2)
+
+    async def test_old_presets_get_defaults_and_invalid_style_fails_closed(self):
+        self.assertEqual(read()['profiles'][0]['reply_style'],{'teasing':1,'refusal':1,'punctuation':'natural'})
+        for bad in [{'teasing':True},{'refusal':3},{'punctuation':'anything'},{'unknown':0}]:
+            self.profile['reply_style']=bad;self.write([])
+            with self.assertRaises(ValueError):read()
+
 
 class ProactiveStatusTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+from .reply_style import normalize
 
 ROOT=Path(__file__).resolve().parents[3]
 TEXT_FIELDS={'name':80,'description':6000,'personality':6000,'scenario':3000,
@@ -27,6 +28,7 @@ def read():
             for field,limit in TEXT_FIELDS.items():
                 if not isinstance(p.get(field),str) or len(p[field])>limit:raise ValueError()
             if not p['name'].strip() or not (p['description'].strip() or p['personality'].strip()):raise ValueError()
+            p['reply_style']=normalize(p.get('reply_style'))
         keys=set()
         for b in data['bindings']:
             if not re.fullmatch(r'[1-9][0-9]{0,19}',b['user_id']) or not (b['bot_id']=='*' or re.fullmatch(r'[1-9][0-9]{0,19}',b['bot_id'])):raise ValueError()
@@ -57,6 +59,7 @@ def cards(builtins=None):
         base=builtins.get(p.get('base_card',''))
         raw=dict(base.raw_data.get('data',base.raw_data)) if base else {}
         raw.update({k:p[k] for k in TEXT_FIELDS})
+        raw['reply_style']=p['reply_style']
         result[p['id']]=TavernCard(raw,p['id']+'.json')
     return result
 
@@ -78,5 +81,5 @@ def catalog(path):
     bots={str(s['bot_id']) for s in data if s.get('bot_id')}
     from nonebot import get_bots
     bots.update(get_bots())
-    return {'schema_version':1,'cards':[{'id':key,**{f:getattr(c,f,'') for f in TEXT_FIELDS}} for key,c in unique.items()],
+    return {'schema_version':1,'cards':[{'id':key,'reply_style':c.reply_style,**{f:getattr(c,f,'') for f in TEXT_FIELDS}} for key,c in unique.items()],
             'bot_ids':sorted(bots)}

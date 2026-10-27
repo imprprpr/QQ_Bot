@@ -30,7 +30,7 @@ class SMSDeliveryTests(unittest.IsolatedAsyncioTestCase):
 
     def test_short_replies_urls_emoji_and_group_caps(self):
         self.assertEqual(sms_chunks('好呀，晚安～'),['好呀，晚安～'])
-        self.assertEqual(sms_chunks('嗯。\n好。\n晚安。'),['嗯。\n好。\n晚安。'])
+        self.assertEqual(sms_chunks('嗯。\n好。\n晚安。'),['嗯。 好。 晚安。'])
         url='https://example.com/a?x=1&y=2'
         text='看看这个地址 '+url+' 😊。\n'+SCREENSHOT
         parts=sms_chunks(text,2)
@@ -38,6 +38,23 @@ class SMSDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(url in p for p in parts))
         self.assertIn('😊',''.join(parts))
         self.assertEqual(len(sms_chunks(SCREENSHOT,1)),1)
+
+    def test_complete_short_lines_become_bubbles_instead_of_ragged_newlines(self):
+        text='忙你的，我不打扰\n就是别一头扎进去，忘了歇会儿'
+        self.assertEqual(sms_chunks(text,2),text.splitlines())
+        opening='也是，都这个点了\n我这是问了句废话。那你现在忙什么呢，总不至于大晚上还挺闲吧'
+        self.assertEqual(sms_chunks(opening,2),opening.splitlines())
+        capped=sms_chunks('第一件事情说完了\n第二件事情也说完了\n还有第三件想说的事情',2)
+        self.assertEqual(len(capped),2)
+        self.assertTrue(all('\n' not in p for p in capped))
+        self.assertEqual(re.sub(r'\s','',''.join(capped)),'第一件事情说完了第二件事情也说完了还有第三件想说的事情')
+
+    async def test_short_line_delivery_keeps_two_bubbles_and_existing_pacing(self):
+        text='忙你的，我不打扰\n就是别一头扎进去，忘了歇会儿'
+        with patch.object(test_bot.plugin,'try_send',AsyncMock(return_value=True)) as sender,patch('src.plugins.chat_and_draw.chat_flow.asyncio.sleep',AsyncMock()) as pause:
+            await test_bot.plugin.send_reply(text,None,None,False,bubble_limit=2)
+        self.assertEqual([c.args[1].data['text'] for c in sender.await_args_list],text.splitlines())
+        pause.assert_awaited_once()
 
     async def test_delivery_pauses_between_bubbles_with_no_extra_model_calls(self):
         with patch.object(test_bot.plugin,'try_send',AsyncMock(return_value=True)) as sender, patch('src.plugins.chat_and_draw.chat_flow.asyncio.sleep',AsyncMock()) as sleep:

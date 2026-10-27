@@ -301,6 +301,8 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
         current_system_prompt += "\n" + CODE_ANALYSIS_PROMPT
     elif not ambient:
         current_system_prompt += sms_style_context(last_user_text)
+    from .reply_style import prompt as reply_style_prompt
+    current_system_prompt += reply_style_prompt(getattr(active_card,'reply_style',None), professional=code_analysis)
     output_budget = int(os.getenv("LLM_MAX_TOKENS", "500"))
     if code_analysis:
         output_budget = max(output_budget, min(2400, max(500, int(os.getenv("CODE_ANALYSIS_MAX_TOKENS", "1400")))))

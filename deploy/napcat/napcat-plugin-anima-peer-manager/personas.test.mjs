@@ -35,3 +35,26 @@ test('persona routes require NapCat authentication; cross-origin writes rejected
  assert.equal(routes.length,4);let code;const res={setHeader(){},status(n){code=n;return this;},json(){}};
  await routes[1][1]({headers:{origin:'https://evil.example',host:'localhost'}},res);assert.equal(code,403);
 });
+
+test('style preferences persist separately per preset and older clients cannot reset them',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'persona-style-')),file=path.join(dir,'config.json');
+ try{
+  const input={...Object.fromEntries(Object.keys(textFields).map(k=>[k,''])),name:'安静角色',personality:'随和',base_card:'ling'};
+  let d=await mutatePersonas(file,{...input,revision:'',reply_style:{teasing:0,refusal:0,punctuation:'standard'}},'save');
+  const first=d.saved_id;
+  d=await mutatePersonas(file,{...input,name:'斗嘴角色',revision:d.revision,reply_style:{teasing:3,refusal:2,punctuation:'minimal'}},'save');
+  assert.equal(d.profiles.length,2);
+  d=await mutatePersonas(file,{...input,id:first,name:'改名',revision:d.revision},'save');
+  assert.deepEqual(d.profiles[0].reply_style,{teasing:0,refusal:0,punctuation:'standard'});
+  assert.deepEqual(readPersonas(file).profiles[1].reply_style,{teasing:3,refusal:2,punctuation:'minimal'});
+  const before=fs.readFileSync(file,'utf8');
+  for(const bad of [{teasing:true},{refusal:3},{punctuation:'bad'},{toString:'override'}]){
+   await assert.rejects(mutatePersonas(file,{...input,id:first,revision:d.revision,reply_style:bad},'save'));
+   assert.equal(fs.readFileSync(file,'utf8'),before);
+  }
+  const legacy={schema_version:1,revision:'legacy',profiles:[{...input,id:first}],bindings:[]};
+  fs.writeFileSync(file,JSON.stringify(legacy));
+  assert.deepEqual(readPersonas(file).profiles[0].reply_style,{teasing:1,refusal:1,punctuation:'natural'});
+  assert.equal(JSON.parse(fs.readFileSync(file)).profiles[0].reply_style,undefined);
+ }finally{fs.rmSync(dir,{recursive:true});}
+});

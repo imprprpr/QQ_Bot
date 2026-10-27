@@ -1,15 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { registerModels } from './models.mjs?v=1.6.0';
+import { registerModels } from './models.mjs?v=1.7.0';
 
-import { registerProactive } from './proactive.mjs?v=1.6.0';
+import { registerProactive } from './proactive.mjs?v=1.7.0';
 
-import { registerParticipation } from './participation.mjs?v=1.6.0';
+import { registerParticipation } from './participation.mjs?v=1.7.0';
 
-import { registerMonitor } from './monitor.mjs?v=1.6.0';
+import { registerMonitor } from './monitor.mjs?v=1.7.0';
 
-import { registerPersonas } from './personas.mjs?v=1.6.0';
+import { registerPersonas } from './personas.mjs?v=1.7.0';
 
 const MAX_IDS = 1000;
 export function parseIds(value) {

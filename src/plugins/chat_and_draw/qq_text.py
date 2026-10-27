@@ -119,16 +119,16 @@ def sms_chunks(text, max_bubbles=3, target=75):
             current += unit
         if current.strip():
             bubbles.append(current.strip())
-    # Merge adjacent short pieces instead of turning every exclamation into a send.
+    # Merge tiny fragments, not complete short clauses separated by the model.
     index = 0
     while index < len(bubbles)-1:
-        if len(bubbles[index]) < 10:
-            bubbles[index:index+2] = [bubbles[index]+'\n'+bubbles[index+1]]
+        if len(re.sub(r'\s','',bubbles[index])) < 5:
+            bubbles[index:index+2] = [bubbles[index]+' '+bubbles[index+1]]
         else:
             index += 1
     while len(bubbles) > max_bubbles:
         index = min(range(len(bubbles)-1), key=lambda i:len(bubbles[i])+len(bubbles[i+1]))
-        bubbles[index:index+2] = [bubbles[index]+'\n'+bubbles[index+1]]
+        bubbles[index:index+2] = [bubbles[index]+' '+bubbles[index+1]]
     result = []
     for bubble in bubbles:
         for index, atom in enumerate(atoms):

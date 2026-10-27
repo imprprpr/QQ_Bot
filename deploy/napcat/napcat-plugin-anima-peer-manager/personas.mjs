@@ -1,21 +1,29 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {readStatus} from './monitor.mjs?v=1.6.0';
+import {readStatus} from './monitor.mjs?v=1.7.0';
 
 export const textFields={name:80,description:6000,personality:6000,scenario:3000,first_mes:1000,mes_example:8000,system_prompt:6000};
+export function normalizeStyle(value){
+ const defaults={teasing:1,refusal:1,punctuation:'natural'};
+ if(value==null)return defaults;
+ if(typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!Object.hasOwn(defaults,k)))throw Error('聊天风格无效');
+ const d={...defaults,...value};
+ if(!Number.isInteger(d.teasing)||d.teasing<0||d.teasing>3||!Number.isInteger(d.refusal)||d.refusal<0||d.refusal>2||!['natural','standard','minimal'].includes(d.punctuation))throw Error('聊天风格无效');
+ return d;
+}
 export function readPersonas(file){
  if(!fs.existsSync(file))return {schema_version:1,revision:'',profiles:[],bindings:[]};
  if(fs.statSync(file).size>1024*1024)throw Error('配置过大');
  const d=JSON.parse(fs.readFileSync(file,'utf8'));
  if(d.schema_version!==1||!Array.isArray(d.profiles)||d.profiles.length>50||!Array.isArray(d.bindings)||d.bindings.length>1000)throw Error('人设配置损坏');
  const ids=new Set();
- for(const p of d.profiles){if(!/^persona-[a-f0-9-]{36}$/.test(p.id)||ids.has(p.id))throw Error('人设标识无效');ids.add(p.id);validateProfile(p);}
+ for(const p of d.profiles){if(!/^persona-[a-f0-9-]{36}$/.test(p.id)||ids.has(p.id))throw Error('人设标识无效');ids.add(p.id);validateProfile(p);p.reply_style=normalizeStyle(p.reply_style);}
  const keys=new Set();for(const b of d.bindings){const k=b.bot_id+':'+b.user_id;if(!/^[1-9][0-9]{0,19}$/.test(b.user_id)||!(b.bot_id==='*'||/^[1-9][0-9]{0,19}$/.test(b.bot_id))||typeof b.persona_id!=='string'||!b.persona_id||b.persona_id.length>100||keys.has(k))throw Error('分配格式无效');keys.add(k);}
  return d;
 }
 function validateProfile(input){
- const p={base_card:String(input.base_card||'')};
+ const p={base_card:String(input.base_card||''),reply_style:normalizeStyle(input.reply_style)};
  if(p.base_card.length>80||p.base_card.startsWith('persona-'))throw Error('请选择已有基础角色');
  for(const [key,max] of Object.entries(textFields)){if(typeof input[key]!=='string'||input[key].length>max)throw Error('人设字段过长或格式不正确');p[key]=input[key];}
  if(!p.name.trim()||!(p.description.trim()||p.personality.trim()))throw Error('请填写名称及角色描述或性格');
@@ -26,7 +34,7 @@ export async function mutatePersonas(file,input,operation,getCatalog){
  const d=readPersonas(file);if(input.revision!==d.revision)throw Error('其他页面已更新，请重新读取');
  if(operation==='save'){
   const previous=d.profiles.find(p=>p.id===input.id);if(input.id&&!previous)throw Error('预设不存在');
-  const p={...validateProfile(input),id:previous?.id||'persona-'+randomUUID()};
+  const p={...validateProfile({...input,reply_style:input.reply_style===undefined?previous?.reply_style:input.reply_style}),id:previous?.id||'persona-'+randomUUID()};
   if(previous)d.profiles[d.profiles.indexOf(previous)]=p;else{if(d.profiles.length>=50)throw Error('最多50个人设');d.profiles.push(p);}
   return {...write(file,d),saved_id:p.id};
  }
