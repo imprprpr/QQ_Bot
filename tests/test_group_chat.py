@@ -25,8 +25,8 @@ class GroupTests(unittest.IsolatedAsyncioTestCase):
             'GROUP_CHAT_ENABLED':'true', 'GROUP_CHAT_AMBIENT_ENABLED':'true',
             'GROUP_CHAT_GROUPS':'', 'GROUP_CHAT_NICKNAMES':'小灯,Ling',
             'GROUP_CHAT_PROBABILITY':'1', 'GROUP_CHAT_COOLDOWN':'300',
-            'GROUP_CHAT_NICKNAME_COOLDOWN':'45', 'GROUP_CHAT_HOURLY_LIMIT':'6',
-            'GROUP_CHAT_GLOBAL_HOURLY_LIMIT':'20', 'GROUP_CHAT_AMBIENT_HOURLY_LIMIT':'2',
+            'GROUP_CHAT_NICKNAME_COOLDOWN':'45', 'GROUP_CHAT_NICKNAME_HOURLY_LIMIT':'6',
+            'GROUP_CHAT_NICKNAME_GLOBAL_HOURLY_LIMIT':'20', 'GROUP_CHAT_AMBIENT_HOURLY_LIMIT':'2',
             'GROUP_CHAT_AMBIENT_DAILY_LIMIT':'8'})
         self.env.start()
         self.clock = patch.object(group_chat.time, 'time', return_value=self.now)
@@ -63,7 +63,7 @@ class GroupTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(context['messages']), 1)
 
     async def test_mentions_bypass_all_quotas_even_when_group_feature_disabled(self):
-        os.environ.update(GROUP_CHAT_ENABLED='false',GROUP_CHAT_HOURLY_LIMIT='0')
+        os.environ.update(GROUP_CHAT_ENABLED='false',GROUP_CHAT_NICKNAME_HOURLY_LIMIT='0')
         event = self.event(addressed=True)
         self.assertEqual((await self.policy.select(self.bot,event))['mode'], 'mention')
         self.assertEqual((await self.policy.select(self.bot,event))['mode'], 'mention')
@@ -109,7 +109,7 @@ class GroupTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await self.policy.select(self.bot,self.event()))
 
     async def test_restart_keeps_quotas_and_global_budget(self):
-        os.environ.update(GROUP_CHAT_NICKNAME_COOLDOWN='0',GROUP_CHAT_HOURLY_LIMIT='1',GROUP_CHAT_GLOBAL_HOURLY_LIMIT='2')
+        os.environ.update(GROUP_CHAT_NICKNAME_COOLDOWN='0',GROUP_CHAT_NICKNAME_HOURLY_LIMIT='1',GROUP_CHAT_NICKNAME_GLOBAL_HOURLY_LIMIT='2')
         self.assertIsNotNone(await self.policy.select(self.bot,self.event('小灯你好')))
         reloaded = group_chat.GroupChat(self.path)
         self.assertIsNone(await reloaded.select(self.bot,self.event('小灯你好')))
@@ -192,7 +192,7 @@ class GroupTests(unittest.IsolatedAsyncioTestCase):
     async def test_followup_not_granted_to_other_member_or_expired_reply(self):
         os.environ['GROUP_CHAT_PROBABILITY']='0'
         room=self.policy.room(self.bot,self.event())
-        self.policy.add(room,None,'bot:999:to:123','你好',self.now-181)
+        self.policy.add(room,None,'bot:999:to:123','你好',self.now-301)
         self.assertIsNone(await self.policy.select(self.bot,self.event('然后呢')))
         self.policy.add(room,None,'bot:999:to:456','你好',self.now-10)
         self.assertIsNone(await self.policy.select(self.bot,self.event('然后呢')))
@@ -232,3 +232,11 @@ class GroupTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(model.await_args.kwargs['silent_failure'])
         memory.assert_not_awaited()
         self.assertEqual(sender.await_args.args,('可以再试一下',None,None,False))
+
+    async def test_followup_prompt_prioritizes_continuing_conversation(self):
+        create=AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(finish_reason='stop',message=SimpleNamespace(content='然后可以这样'))],usage=None))
+        client=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        with patch.object(test_bot.llm,'get_client',return_value=client):
+            await test_bot.llm.get_chat_response([{'role':'user','content':'然后呢'}],group_context={'mode':'followup','messages':[]})
+        self.assertIn('【正在接话】',create.await_args.kwargs['messages'][0]['content'])
+        self.assertNotIn('先结合群聊上下文判断',create.await_args.kwargs['messages'][0]['content'])

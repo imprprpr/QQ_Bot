@@ -15,10 +15,10 @@ test('policy roundtrip, all fields and stale writes',()=>{
  }finally{fs.rmSync(dir,{recursive:true});}
 });
 test('reject invalid fields, values and excessive bot rounds',()=>{
- for(const values of [{BOT_INTERACTION_MAX_ROUNDS:4},{GROUP_CHAT_ENABLED:1},{GROUP_CHAT_DAILY_LIMIT:-1},{BOT_INTERACTION_DAILY_LIMIT:1.5},{GROUP_CHAT_PROBABILITY:NaN}]){
+ for(const values of [{BOT_INTERACTION_MAX_ROUNDS:4},{GROUP_CHAT_ENABLED:1},{GROUP_CHAT_NICKNAME_DAILY_LIMIT:-1},{BOT_INTERACTION_DAILY_LIMIT:1.5},{GROUP_CHAT_PROBABILITY:NaN}]){
   const d=defaults();assert.throws(()=>validateParticipation({...d,values:{...d.values,...values}}));
  }
- assert.throws(()=>validateParticipation({schema_version:1,values:{}}));
+ assert.throws(()=>validateParticipation({schema_version:2,values:{}}));
 });
 test('authenticated routes only; cross-origin writes rejected',()=>{
  const gets=[],posts=[],pages=[];
@@ -26,4 +26,15 @@ test('authenticated routes only; cross-origin writes rejected',()=>{
  assert.equal(gets[0][0],'/participation/config');assert.equal(pages[0].path,'participation');
  let code;const res={setHeader(){},status(n){code=n;return this;},json(){}};
  posts[0][1]({headers:{origin:'https://evil.example',host:'localhost'}},res);assert.equal(code,403);
+});
+
+test('legacy migration preserves strict random and bot caps, rejects malformed files',()=>{
+ const oldFields=JSON.parse(fs.readFileSync(new URL('./participation.v1.schema.json',import.meta.url),'utf8'));
+ const values=Object.fromEntries(oldFields.map(f=>[f.key,f.default]));values.GROUP_CHAT_GLOBAL_DAILY_LIMIT=24;values.BOT_INTERACTION_DAILY_LIMIT=6;
+ const result=validateParticipation({schema_version:1,revision:'old',values});
+ assert.equal(result.schema_version,2);assert.equal(result.revision,'old');
+ assert.equal(result.values.GROUP_CHAT_AMBIENT_GLOBAL_DAILY_LIMIT,24);
+ assert.equal(result.values.BOT_INTERACTION_DAILY_LIMIT,6);
+ assert.equal(result.values.GROUP_CHAT_NICKNAME_DAILY_LIMIT,60);
+ assert.throws(()=>validateParticipation({schema_version:1,values:{}}));
 });

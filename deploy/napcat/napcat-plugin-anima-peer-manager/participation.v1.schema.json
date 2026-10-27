@@ -1,0 +1,240 @@
+[
+  {
+    "key": "GROUP_CHAT_ENABLED",
+    "label": "回应昵称与参与未@的群聊",
+    "section": "group",
+    "type": "boolean",
+    "default": true
+  },
+  {
+    "key": "GROUP_CHAT_AMBIENT_ENABLED",
+    "label": "自行判断插话与继续接话",
+    "section": "group",
+    "type": "boolean",
+    "default": true
+  },
+  {
+    "key": "GROUP_CHAT_COOLDOWN",
+    "label": "自行插话冷却（秒）",
+    "section": "group",
+    "type": "number",
+    "default": 180,
+    "min": 10,
+    "max": 3600,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_NICKNAME_COOLDOWN",
+    "label": "昵称呼叫冷却（秒）",
+    "section": "group",
+    "type": "number",
+    "default": 45,
+    "min": 1,
+    "max": 600,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_FOLLOWUP_COOLDOWN",
+    "label": "继续接话冷却（秒）",
+    "section": "group",
+    "type": "number",
+    "default": 5,
+    "min": 1,
+    "max": 600,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_FOLLOWUP_WINDOW",
+    "label": "接话窗口（秒）",
+    "section": "group",
+    "type": "number",
+    "default": 180,
+    "min": 30,
+    "max": 600,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_FOLLOWUP_MAX_ROUNDS",
+    "label": "接话窗口内最多回复轮次",
+    "section": "group",
+    "type": "number",
+    "default": 3,
+    "min": 1,
+    "max": 6,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_HOURLY_LIMIT",
+    "label": "每群每小时非@尝试上限",
+    "section": "group",
+    "type": "number",
+    "default": 12,
+    "min": 0,
+    "max": 120,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_GLOBAL_HOURLY_LIMIT",
+    "label": "所有群每小时非@尝试上限",
+    "section": "group",
+    "type": "number",
+    "default": 40,
+    "min": 0,
+    "max": 500,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_AMBIENT_HOURLY_LIMIT",
+    "label": "每群每小时自行插话上限",
+    "section": "group",
+    "type": "number",
+    "default": 4,
+    "min": 0,
+    "max": 30,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_AMBIENT_DAILY_LIMIT",
+    "label": "每群24小时自行插话上限",
+    "section": "group",
+    "type": "number",
+    "default": 12,
+    "min": 0,
+    "max": 100,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_DAILY_LIMIT",
+    "label": "每群24小时非@尝试上限",
+    "section": "group",
+    "type": "number",
+    "default": 60,
+    "min": 0,
+    "max": 500,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_GLOBAL_DAILY_LIMIT",
+    "label": "所有群24小时非@尝试上限",
+    "section": "group",
+    "type": "number",
+    "default": 200,
+    "min": 0,
+    "max": 2000,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_PROBABILITY",
+    "label": "普通群消息抽样概率（0至1）",
+    "section": "group",
+    "type": "number",
+    "default": 0.25,
+    "min": 0,
+    "max": 1,
+    "integer": false
+  },
+  {
+    "key": "BOT_INTERACTION_ENABLED",
+    "label": "启用指定 bot 互聊",
+    "section": "bots",
+    "type": "boolean",
+    "default": true
+  },
+  {
+    "key": "BOT_INTERACTION_PROACTIVE_ENABLED",
+    "label": "允许主动向对方搭话",
+    "section": "bots",
+    "type": "boolean",
+    "default": true
+  },
+  {
+    "key": "BOT_INTERACTION_COOLDOWN",
+    "label": "一轮互聊结束后的冷却（秒）",
+    "section": "bots",
+    "type": "number",
+    "default": 600,
+    "min": 60,
+    "max": 86400,
+    "integer": true
+  },
+  {
+    "key": "BOT_INTERACTION_REPLY_COOLDOWN",
+    "label": "轮内回复冷却（秒）",
+    "section": "bots",
+    "type": "number",
+    "default": 5,
+    "min": 1,
+    "max": 600,
+    "integer": true
+  },
+  {
+    "key": "BOT_INTERACTION_MAX_ROUNDS",
+    "label": "每轮我方最多回复条数（含开场）",
+    "section": "bots",
+    "type": "number",
+    "default": 2,
+    "min": 1,
+    "max": 3,
+    "integer": true
+  },
+  {
+    "key": "BOT_INTERACTION_SESSION_SECONDS",
+    "label": "每轮互聊窗口（秒）",
+    "section": "bots",
+    "type": "number",
+    "default": 180,
+    "min": 30,
+    "max": 600,
+    "integer": true
+  },
+  {
+    "key": "BOT_INTERACTION_HOURLY_LIMIT",
+    "label": "每群每小时互聊尝试上限",
+    "section": "bots",
+    "type": "number",
+    "default": 6,
+    "min": 0,
+    "max": 60,
+    "integer": true
+  },
+  {
+    "key": "BOT_INTERACTION_DAILY_LIMIT",
+    "label": "所有群24小时互聊尝试上限",
+    "section": "bots",
+    "type": "number",
+    "default": 12,
+    "min": 0,
+    "max": 200,
+    "integer": true
+  },
+  {
+    "key": "BOT_INTERACTION_PROACTIVE_DAILY_LIMIT",
+    "label": "其中主动开场24小时上限",
+    "section": "bots",
+    "type": "number",
+    "default": 3,
+    "min": 0,
+    "max": 20,
+    "integer": true
+  },
+  {
+    "key": "BOT_INTERACTION_PROACTIVE_PROBABILITY",
+    "label": "后台检查时主动开场概率（0至1）",
+    "section": "bots",
+    "type": "number",
+    "default": 0.2,
+    "min": 0,
+    "max": 1,
+    "integer": false
+  },
+  {
+    "key": "BOT_INTERACTION_REPLY_PROBABILITY",
+    "label": "未明确@时回应概率（0至1）",
+    "section": "bots",
+    "type": "number",
+    "default": 0.3,
+    "min": 0,
+    "max": 1,
+    "integer": false
+  }
+]

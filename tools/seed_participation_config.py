@@ -23,7 +23,7 @@ def seed(output, root):
             value=max(f['min'],min(f['max'],value))
             if f['integer']:value=int(value)
         values[f['key']]=value
-    data={'schema_version':1,'revision':str(uuid.uuid4()),'values':values}
+    data={'schema_version':2,'revision':str(uuid.uuid4()),'values':values}
     output.parent.mkdir(parents=True,exist_ok=True)
     fd=os.open(output,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o640)
     with os.fdopen(fd,'w',encoding='utf-8') as stream:

@@ -8,15 +8,15 @@
   },
   {
     "key": "GROUP_CHAT_AMBIENT_ENABLED",
-    "label": "自行判断插话与继续接话",
-    "section": "group",
+    "label": "允许随机插话与回应公开问题",
+    "section": "ambient",
     "type": "boolean",
     "default": true
   },
   {
     "key": "GROUP_CHAT_COOLDOWN",
     "label": "自行插话冷却（秒）",
-    "section": "group",
+    "section": "ambient",
     "type": "number",
     "default": 180,
     "min": 10,
@@ -26,7 +26,7 @@
   {
     "key": "GROUP_CHAT_NICKNAME_COOLDOWN",
     "label": "昵称呼叫冷却（秒）",
-    "section": "group",
+    "section": "nickname",
     "type": "number",
     "default": 45,
     "min": 1,
@@ -36,7 +36,7 @@
   {
     "key": "GROUP_CHAT_FOLLOWUP_COOLDOWN",
     "label": "继续接话冷却（秒）",
-    "section": "group",
+    "section": "followup",
     "type": "number",
     "default": 5,
     "min": 1,
@@ -46,47 +46,27 @@
   {
     "key": "GROUP_CHAT_FOLLOWUP_WINDOW",
     "label": "接话窗口（秒）",
-    "section": "group",
+    "section": "followup",
     "type": "number",
-    "default": 180,
+    "default": 300,
     "min": 30,
     "max": 600,
     "integer": true
   },
   {
     "key": "GROUP_CHAT_FOLLOWUP_MAX_ROUNDS",
-    "label": "接话窗口内最多回复轮次",
-    "section": "group",
+    "label": "同一成员接话窗口内最多跟进次数",
+    "section": "followup",
     "type": "number",
-    "default": 3,
+    "default": 6,
     "min": 1,
-    "max": 6,
-    "integer": true
-  },
-  {
-    "key": "GROUP_CHAT_HOURLY_LIMIT",
-    "label": "每群每小时非@尝试上限",
-    "section": "group",
-    "type": "number",
-    "default": 12,
-    "min": 0,
-    "max": 120,
-    "integer": true
-  },
-  {
-    "key": "GROUP_CHAT_GLOBAL_HOURLY_LIMIT",
-    "label": "所有群每小时非@尝试上限",
-    "section": "group",
-    "type": "number",
-    "default": 40,
-    "min": 0,
-    "max": 500,
+    "max": 20,
     "integer": true
   },
   {
     "key": "GROUP_CHAT_AMBIENT_HOURLY_LIMIT",
     "label": "每群每小时自行插话上限",
-    "section": "group",
+    "section": "ambient",
     "type": "number",
     "default": 4,
     "min": 0,
@@ -96,7 +76,7 @@
   {
     "key": "GROUP_CHAT_AMBIENT_DAILY_LIMIT",
     "label": "每群24小时自行插话上限",
-    "section": "group",
+    "section": "ambient",
     "type": "number",
     "default": 12,
     "min": 0,
@@ -104,29 +84,9 @@
     "integer": true
   },
   {
-    "key": "GROUP_CHAT_DAILY_LIMIT",
-    "label": "每群24小时非@尝试上限",
-    "section": "group",
-    "type": "number",
-    "default": 60,
-    "min": 0,
-    "max": 500,
-    "integer": true
-  },
-  {
-    "key": "GROUP_CHAT_GLOBAL_DAILY_LIMIT",
-    "label": "所有群24小时非@尝试上限",
-    "section": "group",
-    "type": "number",
-    "default": 200,
-    "min": 0,
-    "max": 2000,
-    "integer": true
-  },
-  {
     "key": "GROUP_CHAT_PROBABILITY",
     "label": "普通群消息抽样概率（0至1）",
-    "section": "group",
+    "section": "ambient",
     "type": "number",
     "default": 0.25,
     "min": 0,
@@ -236,5 +196,112 @@
     "min": 0,
     "max": 1,
     "integer": false
+  },
+  {
+    "key": "GROUP_CHAT_FOLLOWUP_ENABLED",
+    "label": "允许和正在聊天的成员继续接话",
+    "section": "followup",
+    "type": "boolean",
+    "default": true
+  },
+  {
+    "key": "GROUP_CHAT_NICKNAME_HOURLY_LIMIT",
+    "label": "每群每小时尝试上限",
+    "section": "nickname",
+    "type": "number",
+    "default": 20,
+    "min": 0,
+    "max": 240,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_NICKNAME_GLOBAL_HOURLY_LIMIT",
+    "label": "所有群每小时尝试上限",
+    "section": "nickname",
+    "type": "number",
+    "default": 40,
+    "min": 0,
+    "max": 500,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_NICKNAME_DAILY_LIMIT",
+    "label": "每群24小时尝试上限",
+    "section": "nickname",
+    "type": "number",
+    "default": 60,
+    "min": 0,
+    "max": 1000,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_NICKNAME_GLOBAL_DAILY_LIMIT",
+    "label": "所有群24小时尝试上限",
+    "section": "nickname",
+    "type": "number",
+    "default": 120,
+    "min": 0,
+    "max": 2000,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_FOLLOWUP_HOURLY_LIMIT",
+    "label": "每群每小时尝试上限",
+    "section": "followup",
+    "type": "number",
+    "default": 30,
+    "min": 0,
+    "max": 240,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_FOLLOWUP_GLOBAL_HOURLY_LIMIT",
+    "label": "所有群每小时尝试上限",
+    "section": "followup",
+    "type": "number",
+    "default": 60,
+    "min": 0,
+    "max": 500,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_FOLLOWUP_DAILY_LIMIT",
+    "label": "每群24小时尝试上限",
+    "section": "followup",
+    "type": "number",
+    "default": 120,
+    "min": 0,
+    "max": 1000,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_FOLLOWUP_GLOBAL_DAILY_LIMIT",
+    "label": "所有群24小时尝试上限",
+    "section": "followup",
+    "type": "number",
+    "default": 240,
+    "min": 0,
+    "max": 2000,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_AMBIENT_GLOBAL_HOURLY_LIMIT",
+    "label": "所有群每小时自行插话上限",
+    "section": "ambient",
+    "type": "number",
+    "default": 10,
+    "min": 0,
+    "max": 100,
+    "integer": true
+  },
+  {
+    "key": "GROUP_CHAT_AMBIENT_GLOBAL_DAILY_LIMIT",
+    "label": "所有群24小时自行插话上限",
+    "section": "ambient",
+    "type": "number",
+    "default": 24,
+    "min": 0,
+    "max": 200,
+    "integer": true
   }
 ]

@@ -1,6 +1,6 @@
 {
   "name": "napcat-plugin-anima-peer-manager",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "AnimaBot 群号、互动QQ、模型提供商、主动聊天与群聊参与管理",
   "main": "index.mjs",
   "type": "module",

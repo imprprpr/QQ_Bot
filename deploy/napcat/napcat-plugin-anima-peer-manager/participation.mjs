@@ -3,16 +3,28 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 
 export const fields=JSON.parse(fs.readFileSync(new URL('./participation.schema.json',import.meta.url),'utf8'));
-export const defaults=()=>({schema_version:1,revision:'',values:Object.fromEntries(fields.map(f=>[f.key,f.default]))});
+export const defaults=()=>({schema_version:2,revision:'',values:Object.fromEntries(fields.map(f=>[f.key,f.default]))});
+const legacyFields=JSON.parse(fs.readFileSync(new URL('./participation.v1.schema.json',import.meta.url),'utf8'));
 export function validateParticipation(data) {
-  if(!data || data.schema_version!==1 || !data.values || Array.isArray(data.values) ||
+  if(data?.schema_version===1){
+    const v=data.values;
+    if(!v||Object.keys(v).length!==legacyFields.length||legacyFields.some(f=>f.type==='boolean'?typeof v[f.key]!=='boolean':typeof v[f.key]!=='number'||!Number.isFinite(v[f.key])||v[f.key]<f.min||v[f.key]>f.max||(f.integer&&!Number.isInteger(v[f.key]))))throw Error('旧配置格式无效');
+    const values=Object.fromEntries(fields.map(f=>[f.key,v[f.key]??f.default]));
+    values.GROUP_CHAT_AMBIENT_GLOBAL_HOURLY_LIMIT=v.GROUP_CHAT_GLOBAL_HOURLY_LIMIT;
+    values.GROUP_CHAT_AMBIENT_GLOBAL_DAILY_LIMIT=v.GROUP_CHAT_GLOBAL_DAILY_LIMIT;
+    values.GROUP_CHAT_AMBIENT_HOURLY_LIMIT=Math.min(v.GROUP_CHAT_AMBIENT_HOURLY_LIMIT,v.GROUP_CHAT_HOURLY_LIMIT);
+    values.GROUP_CHAT_AMBIENT_DAILY_LIMIT=Math.min(v.GROUP_CHAT_AMBIENT_DAILY_LIMIT,v.GROUP_CHAT_DAILY_LIMIT);
+    for(const f of fields)if(f.type==='number')values[f.key]=Math.max(f.min,Math.min(f.max,values[f.key]));
+    return validateParticipation({...data,schema_version:2,values});
+  }
+  if(!data || data.schema_version!==2 || !data.values || Array.isArray(data.values) ||
       Object.keys(data.values).length!==fields.length) throw Error('配置格式不正确');
   for(const f of fields) {
     const v=data.values[f.key];
     if(f.type==='boolean' ? typeof v!=='boolean' :
         typeof v!=='number'||!Number.isFinite(v)||v<f.min||v>f.max||(f.integer&&!Number.isInteger(v))) throw Error('参数无效：'+f.label);
   }
-  return {schema_version:1,revision:data.revision,values:Object.fromEntries(fields.map(f=>[f.key,data.values[f.key]]))};
+  return {schema_version:2,revision:data.revision,values:Object.fromEntries(fields.map(f=>[f.key,data.values[f.key]]))};
 }
 export function readParticipation(file) {
   if(!fs.existsSync(file))return defaults();
