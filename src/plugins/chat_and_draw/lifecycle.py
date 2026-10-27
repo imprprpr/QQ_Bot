@@ -12,25 +12,29 @@ from .memory import EventMemoryStore
 class BackgroundLifecycle:
 
     async def run_proactive_once(self, now=None):
-        from .proactive import local_now, in_window, eligible, next_time, choose_topic, opener_prompt, opener_text, global_daily_limit
+        from .proactive import local_now, in_window, eligible, next_time, choose_topic, opener_prompt, opener_text
         from .llm import ServiceNotice
         from .sessions import trim_history
-        now = local_now() if now is None else now
-        if not in_window(now):
+        from .proactive_config import settings
+        config = settings()
+        realtime = now is None
+        now = local_now(config) if realtime else now
+        if not in_window(now, config):
             return
+        await self.store.reschedule_proactive(now, config)
         epoch = now.timestamp()
         for key in await self.store.due(epoch):
             async with self.store.lock(key):
                 session = await self.store.load(key)
                 if not session.proactive or not session.private or session.next_proactive > epoch:
                     continue
-                session.next_proactive = next_time(now, max(session.last_interaction, epoch), max(session.proactive_last_attempt, epoch))
-                if not eligible(session, now):
+                session.next_proactive = next_time(now, max(session.last_interaction, epoch), max(session.proactive_last_attempt, epoch), config=config)
+                if not eligible(session, now, config):
                     await self.store.save(session)
                     continue
                 day = now.date().isoformat()
                 topic = choose_topic(session)
-                reserved = await self.store.reserve_proactive(session, day, epoch, topic, global_daily_limit())
+                reserved = await self.store.reserve_proactive(session, day, epoch, topic, config['global_daily_limit'])
                 if reserved is None:
                     await self.store.save(session)
                     return
@@ -47,6 +51,10 @@ class BackgroundLifecycle:
                     return
                 async with self.store.lock(key):
                     current = await self.store.load(key)
+                    latest = settings()
+                    if (latest['_revision'] != config['_revision']
+                            or not in_window(local_now(latest) if realtime else now, latest)):
+                        return
                     # A human message or role/opt-in change during generation cancels this greeting.
                     if (not current.proactive or current.proactive_unanswered
                             or current.last_interaction != last_interaction or current.character != character):

@@ -1,0 +1,36 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AnimaBot 主动聊天</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#14151b;color:#ececf2}*{box-sizing:border-box}body{max-width:850px;margin:auto;padding:28px}h1{font-size:26px}p,small{color:#b5b8c9;line-height:1.7}a{color:#aebdff}.panel{padding:24px;border:1px solid #353846;border-radius:16px;background:#1e2029;margin:20px 0}label{display:block;margin:18px 0 8px}input{font:inherit;color:inherit;background:#151720;border:1px solid #484c60;border-radius:8px;padding:10px;width:100%}input[type=checkbox]{width:22px;height:22px;vertical-align:middle;margin-right:10px}button{font:inherit;cursor:pointer;background:#30364c;color:inherit;padding:10px 16px;border:1px solid #6474ae;border-radius:8px}button.primary{background:#526cdb}button:disabled{opacity:.5;cursor:wait}.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}.window{display:flex;gap:10px;align-items:center;margin:10px 0}.window input{max-width:140px}.actions{display:flex;gap:12px;flex-wrap:wrap}#notice{white-space:pre-wrap;min-height:48px;color:#b8c8ff;line-height:1.6}.error{color:#ffb6c2!important}@media(max-width:600px){body{padding:16px}.grid{grid-template-columns:1fr}.panel{padding:16px}}
+</style>
+<h1>主动聊天</h1><p>让她偶尔分享兴趣、吐槽或找个小借口搭话。<a href="/webui/" target="_top">返回 NapCat / 登录</a></p>
+<form id="form"><section class="panel">
+<label><input id="enabled" type="checkbox">启用私聊主动聊天</label><small>只作用于已有私聊；用户单独关闭的会话仍保持关闭。群聊与机器人互动使用独立设置。</small>
+<div class="grid">
+<div><label for="utc_offset">时区：UTC 偏移（小时）</label><input id="utc_offset" type="number" min="-12" max="14" step="0.25" required><small>默认 +8 为北京时间；按此时区计算时间段及每日次数。夏令时需自行调整。</small></div>
+<div><label for="idle_hours">多久没有聊天后允许搭话（小时）</label><input id="idle_hours" type="number" min="1" max="24" step="0.5" required></div>
+<div><label for="cooldown_hours">同一私聊的冷却时间（小时）</label><input id="cooldown_hours" type="number" min="3" max="48" step="0.5" required><small>两次主动尝试之间至少间隔这么久，最低3小时。</small></div>
+<div><label for="daily_limit">每个私聊每日最多尝试次数</label><input id="daily_limit" type="number" min="0" max="3" step="1" required><small>0 表示暂停；最多3次。生成失败或选择不打扰也占一次。</small></div>
+<div><label for="global_daily_limit">全部私聊每日合计最多尝试次数</label><input id="global_daily_limit" type="number" min="0" max="20" step="1" required><small>0 表示暂停；最多20次，避免大量调用 API。</small></div>
+</div>
+<label>允许主动聊天的时间段</label><div id="windows"></div><button id="add" type="button">＋ 添加时间段</button><p>使用24小时制，如 08:00 至 10:00。最多8段，不能重叠；跨午夜请拆开填写，结束可填 24:00。</p>
+</section><div class="actions"><button class="primary" id="save" type="submit" disabled>保存并生效</button><button id="reload" type="button">重新读取</button></div></form>
+<p>后台每5分钟检查一次，保存后将在下一次检查采用新设置并重新安排时间，不会立即发送。不会清空今日次数；上次主动消息未获回复时，不会连续打扰。</p>
+<div id="notice" role="status" aria-live="polite">正在读取…</div>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);let state=null,busy=false;
+const keys=['utc_offset','idle_hours','cooldown_hours','daily_limit','global_daily_limit'];
+function notice(text,error=false){$('notice').textContent=text;$('notice').classList.toggle('error',error);}
+async function api(body){const token=localStorage.getItem('token');if(!token)throw Error('请先返回 NapCat 登录，再重新打开本页面。');
+ const r=await fetch('/api/Plugin/ext/napcat-plugin-anima-peer-manager/proactive/config',{method:body?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:body?JSON.stringify(body):undefined,cache:'no-store'});
+ const data=await r.json();if(!r.ok||data.code!==0)throw Error(data.code===-1||r.status===401?'登录已过期，请返回 NapCat 重新登录。':data.message||'操作失败');return data.data;}
+const format=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
+function minutes(s){if(!/^(?:[01]\d|2[0-3]):[0-5]\d$|^24:00$/.test(s))throw Error('时间格式应为 HH:MM，例如 08:00。');const [h,m]=s.split(':').map(Number);return h*60+m;}
+function row(start=480,end=600){const box=document.createElement('div');box.className='window';for(const [n,label] of [[start,'开始时间'],[end,'结束时间']]){const input=document.createElement('input');input.value=format(n);input.placeholder='HH:MM';input.required=true;input.setAttribute('aria-label',label);box.append(input);}const remove=document.createElement('button');remove.type='button';remove.textContent='移除';remove.onclick=()=>{if(busy)return;box.remove();};box.append(remove);$('windows').append(box);}
+function render(){keys.forEach(k=>$(k).value=state[k]);$('enabled').checked=state.enabled;$('windows').replaceChildren();state.windows.forEach(w=>row(...w));}
+async function run(fn){if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){notice(e.message,true);}finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);$('save').disabled=!state;}}
+$('add').onclick=()=>{if($('windows').children.length>=8)return notice('最多8个时间段。',true);row();};
+$('reload').onclick=()=>run(async()=>{state=await api();render();notice('已读取服务器设置。');});
+$('form').onsubmit=e=>{e.preventDefault();run(async()=>{if(!state)throw Error('请先读取配置');const body={...state,enabled:$('enabled').checked,windows:[...$('windows').children].map(r=>[...r.querySelectorAll('input')].map(i=>minutes(i.value.trim())))};keys.forEach(k=>body[k]=Number($(k).value));state=await api(body);render();notice('已保存。后台将在下一次检查（5分钟内）采用新设置，无需重启。');});};
+run(async()=>{state=await api();render();notice('已读取服务器设置。');});
+</script></html>

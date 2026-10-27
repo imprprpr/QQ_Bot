@@ -185,3 +185,80 @@ class ProactiveTests(unittest.IsolatedAsyncioTestCase):
         await self.store.save(session)
         await self.store.migrate_legacy()
         self.assertFalse((await self.store.load('legacy')).proactive)
+
+
+class ManagedProactiveTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        await ProactiveTests.asyncSetUp(self)
+        import json
+        from src.plugins.chat_and_draw.proactive_config import settings
+        self.file = Path(self.tmp.name) / 'policy.json'
+        self.policy = {k:v for k,v in settings().items() if not k.startswith('_')}
+        self.policy['windows'] = [[0,1440]]
+        self.file.write_text(json.dumps(self.policy), encoding='utf-8')
+        self.managed_env = patch.dict(os.environ, BOT_PROACTIVE_CONFIG_FILE=str(self.file))
+        self.managed_env.start()
+
+    async def asyncTearDown(self):
+        self.managed_env.stop()
+        await ProactiveTests.asyncTearDown(self)
+
+    async def cycle(self, model=None):
+        # Seed a matching revision so inherited eligibility tests remain due.
+        from src.plugins.chat_and_draw.proactive_config import settings
+        session = await self.store.load('one')
+        session.proactive_schedule_revision = settings()['_revision']
+        await self.store.save(session)
+        return await ProactiveTests.cycle(self, model)
+
+    async def test_hot_reload_and_fail_closed(self):
+        import json
+        from src.plugins.chat_and_draw.proactive_config import settings, validate
+        before = settings()['_revision']
+        self.file.write_text(json.dumps({**self.policy, 'enabled':False}), encoding='utf-8')
+        self.assertFalse(settings()['enabled'])
+        self.assertNotEqual(before, settings()['_revision'])
+        self.file.write_text('{broken', encoding='utf-8')
+        self.assertFalse(settings()['enabled'])
+        self.file.unlink()
+        self.assertFalse(settings()['enabled'])
+        for change in ({'daily_limit':4},{'cooldown_hours':2},{'windows':[[0,60],[59,90]]},{'enabled':'true'},{'windows':[None]}):
+            with self.assertRaises(ValueError):
+                validate({**self.policy, **change})
+
+    async def test_reschedule_preserves_roles_optout_and_quotas(self):
+        from src.plugins.chat_and_draw.proactive_config import settings
+        self.session.history = [{'role':'user','content':'preserve history'}]
+        self.session.memories = ['preserve memory']
+        self.session.proactive_attempts = 2
+        self.session.proactive_unanswered = True
+        await self.store.save(self.session)
+        off = Session('off', proactive=False, next_proactive=0)
+        await self.store.save(off)
+        await self.store.reschedule_proactive(self.now, settings())
+        loaded = await self.store.load('one')
+        self.assertEqual(loaded.history, self.session.history)
+        self.assertEqual(loaded.memories, self.session.memories)
+        self.assertEqual(loaded.proactive_attempts,2)
+        self.assertTrue(loaded.proactive_unanswered)
+        self.assertGreater(loaded.next_proactive,self.now.timestamp())
+        first=loaded.next_proactive
+        await self.store.reschedule_proactive(self.now, settings())
+        self.assertEqual((await self.store.load('one')).next_proactive,first)
+        self.assertFalse((await self.store.load('off')).proactive)
+        self.assertEqual((await self.store.load('off')).next_proactive,0)
+
+    async def test_disable_during_generation_cancels_send(self):
+        import json
+        async def generate(*args,**kwargs):
+            self.file.write_text(json.dumps({**self.policy,'enabled':False}),encoding='utf-8')
+            return ('hello',None,None,False)
+        await self.cycle(AsyncMock(side_effect=generate))
+        self.bot.send_private_msg.assert_not_awaited()
+
+    async def test_policy_change_reschedules_before_calling_model(self):
+        model=AsyncMock()
+        with patch.object(plugin,'store',self.store),patch.object(plugin,'get_chat_response',model):
+            await plugin.run_proactive_once(self.now)
+        model.assert_not_awaited()
+        self.assertGreater((await self.store.load('one')).next_proactive,self.now.timestamp())

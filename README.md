@@ -524,6 +524,10 @@ MEMORY_MODEL=
 
 ## 私聊主动聊天
 
+NapCat → 扩展页面 → **AnimaBot 主动聊天** 可调整总开关、时区、可打扰时间段、闲置时间、冷却时间和每日次数。
+保存后下一次后台检查（5分钟内）热生效，无需重启或编辑配置；不会立即发消息、重置额度或开启用户单独关闭的会话。
+部署时一次性设置 `BOT_PROACTIVE_CONFIG_FILE`，连接插件生成的 `config.json.proactive.json` 宿主机路径，详见[插件说明](deploy/napcat/napcat-plugin-anima-peer-manager/README.md)。
+
 私聊主动问候默认开启，`/proactive off` 关闭，`/proactive on` 重新开启。
 默认北京时间（`PROACTIVE_UTC_OFFSET=8`），08–10、12–14、19–22 的窗口内随机安排；
 `PROACTIVE_MODE=random` 改为08–22随机时段。至少闲置3小时才调用模型，日上限2次生成尝试，

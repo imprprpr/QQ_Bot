@@ -62,3 +62,17 @@ NapCat 的“扩展页面”中打开“AnimaBot 模型提供商”。支持 Ope
 提供商说明：[NapCat 页面和鉴权路由](https://napneko.github.io/develop/plugin/start-webui)、
 [DeepSeek](https://api-docs.deepseek.com/)、[硅基流动](https://docs.siliconflow.cn/docs/userguide/quickstart)、
 [OpenRouter](https://openrouter.ai/docs/api/api-reference/models/get-models)、[Gemini兼容接口](https://ai.google.dev/gemini-api/docs/openai)。
+
+
+## 主动聊天页面（1.2.0）
+
+NapCat → 扩展页面 → AnimaBot 主动聊天，可控制私聊主动聊天的总开关、UTC偏移、1至8个时间段、闲置时间（1至24小时）、冷却（3至48小时）、每私聊每日次数（0至3）和全部私聊每日次数（0至20）。0次表示暂停，失败与主动选择不打扰也计入尝试次数。时间段不重叠，跨午夜拆开填写，结束允许24:00。
+
+页面保存到 `ctx.configPath + '.proactive.json'`。初次部署将现有 PROACTIVE_* 环境配置写入该文件，并为 Bot 设置 `BOT_PROACTIVE_CONFIG_FILE` 为相应宿主机路径，重启一次。共享目录权限要求同模型提供商页面。未接入共享文件的独立部署仍使用原环境变量；已接入但文件损坏或丢失时暂停主动聊天。
+
+后续保存无需重启，下一次5分钟后台检查采用新设置并重新安排时间，不会立即发送消息。每个用户的独立开关、未回复状态、冷却与已用额度继续保留。生成途中配置发生变化会取消该条发送，仍保留已用生成额度。鉴权使用 NapCat 登录，不新增免鉴权写接口。
+
+```bash
+node --test deploy/napcat/napcat-plugin-anima-peer-manager/*.test.mjs
+python -m unittest discover -s tests -p test_proactive.py
+```

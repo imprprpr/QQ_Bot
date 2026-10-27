@@ -3,38 +3,37 @@
 Use an explicit UTC offset, independent of the server timezone (default China).
 Offsets in daylight-saving regions must be adjusted by the operator.
 """
-import os
 import random
 import json
 import re
 from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
+from .proactive_config import settings
 
 
-def local_now():
-    return datetime.now(timezone(timedelta(hours=float(os.getenv('PROACTIVE_UTC_OFFSET', '8')))))
+def local_now(config=None):
+    return datetime.now(timezone(timedelta(hours=(config or settings())['utc_offset'])))
 
 
-def windows():
-    if os.getenv('PROACTIVE_MODE', 'windows') == 'random':
-        return [(8, 22)]
-    return [(8, 10), (12, 14), (19, 22)]
+def windows(config=None):
+    return [(start/60,end/60) for start,end in (config or settings())['windows']]
 
 
-def in_window(now):
-    return any(start <= now.hour + now.minute / 60 < end for start, end in windows())
+def in_window(now, config=None):
+    config = config or settings()
+    return config['enabled'] and any(start <= now.hour + now.minute / 60 < end for start, end in windows(config))
 
 
-def idle_seconds():
-    return max(3600, float(os.getenv('PROACTIVE_IDLE_HOURS', '3')) * 3600)
+def idle_seconds(config=None):
+    return (config or settings())['idle_hours'] * 3600
 
 
-def cooldown_seconds():
-    return max(3, float(os.getenv('PROACTIVE_COOLDOWN_HOURS', '6'))) * 3600
+def cooldown_seconds(config=None):
+    return (config or settings())['cooldown_hours'] * 3600
 
 
 def global_daily_limit():
-    return max(0, min(20, int(os.getenv('PROACTIVE_GLOBAL_DAILY_LIMIT', '6'))))
+    return settings()['global_daily_limit']
 
 
 TOPICS = {
@@ -80,11 +79,12 @@ def opener_text(reply, previous=''):
     return text
 
 
-def next_time(now, last_interaction, last_attempt=0):
-    earliest = max(now.timestamp() + 300, last_interaction + idle_seconds(), last_attempt + cooldown_seconds())
+def next_time(now, last_interaction, last_attempt=0, config=None):
+    config = config or settings()
+    earliest = max(now.timestamp() + 300, last_interaction + idle_seconds(config), last_attempt + cooldown_seconds(config))
     for day in range(3):
         midnight = (now + timedelta(days=day)).replace(hour=0, minute=0, second=0, microsecond=0)
-        for start, end in windows():
+        for start, end in windows(config):
             lower = max(earliest, (midnight + timedelta(hours=start)).timestamp())
             upper = (midnight + timedelta(hours=end)).timestamp()
             if lower < upper:
@@ -92,9 +92,10 @@ def next_time(now, last_interaction, last_attempt=0):
     return earliest + 86400
 
 
-def eligible(session, now):
+def eligible(session, now, config=None):
+    config = config or settings()
     count = session.proactive_attempts if session.proactive_day == now.date().isoformat() else 0
-    return (in_window(now) and not session.proactive_unanswered
-            and now.timestamp() - session.last_interaction >= idle_seconds()
-            and now.timestamp() - session.proactive_last_attempt >= cooldown_seconds()
-            and count < max(0, min(3, int(os.getenv('PROACTIVE_DAILY_LIMIT', '2')))))
+    return (in_window(now, config) and not session.proactive_unanswered
+            and now.timestamp() - session.last_interaction >= idle_seconds(config)
+            and now.timestamp() - session.proactive_last_attempt >= cooldown_seconds(config)
+            and count < config['daily_limit'])

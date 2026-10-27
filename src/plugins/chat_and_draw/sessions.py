@@ -59,6 +59,7 @@ class Session:
     proactive_last_attempt: float = 0
     proactive_last_text: str = ''
     proactive_topics: list[str] = field(default_factory=list)
+    proactive_schedule_revision: str = ''
 
     def touch(self):
         self.proactive_unanswered = False
@@ -150,6 +151,27 @@ class SessionStore:
             self.initialize()
             with self.database.transaction() as conn:
                 self._save_conn(conn, snapshot)
+        await asyncio.to_thread(write)
+
+    async def reschedule_proactive(self, now, config):
+        """Change schedule metadata only; preserve role data, opt-outs and budgets."""
+        revision = config['_revision']
+        if not revision or not config['enabled']:
+            return
+        from .proactive import next_time
+        def write():
+            self.initialize()
+            with self.database.transaction() as conn:
+                for key, raw in conn.execute('SELECT key,data FROM sessions').fetchall():
+                    data = json.loads(raw)
+                    if (not data.get('private', True) or not data.get('proactive', True)
+                            or data.get('proactive_schedule_revision') == revision):
+                        continue
+                    data['next_proactive'] = next_time(now, data.get('last_interaction', 0),
+                        data.get('proactive_last_attempt', 0), config=config)
+                    data['proactive_schedule_revision'] = revision
+                    conn.execute('UPDATE sessions SET data=? WHERE key=?',
+                        (json.dumps(data, ensure_ascii=False), key))
         await asyncio.to_thread(write)
 
     async def reserve_proactive(self, session, day, epoch, topic, global_limit):
