@@ -254,10 +254,10 @@ class TavernManager:
 
 【回复示例】
 用户：发张自拍看看嘛
-{char_name}：真是拿你没办法，等我换好衣服拍给你~ <draw: 1girl, solo, beautiful, gentle smile, looking at viewer, casual clothes>
+{char_name}：好，给你看看。<draw: 1girl, solo, beautiful, gentle smile, looking at viewer, casual clothes>
 
 用户：给我发条语音听听嘛
-{char_name}：好，我说给你听。<voice>
+{char_name}：好，这次用语音。<voice>
 """
         if card.system_prompt:
             tavern_prompt += "\n【角色补充要求】\n" + replace_macros(card.system_prompt) + "\n"

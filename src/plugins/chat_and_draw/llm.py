@@ -16,7 +16,7 @@ from .stickers import sticker_instructions
 from .runtime import record
 from .config import HISTORY_IMAGES
 from .image_history import load_image
-from .conversation import DIALOGUE_STYLE, dialogue_context
+from .conversation import DIALOGUE_STYLE, dialogue_context, sms_style_context
 from .code_analysis import QQ_TEXT_PROMPT, CODE_ANALYSIS_PROMPT, needs_code_analysis
 from .qq_text import qq_plain_text
 from .model_provider import active_profile, ManagedClient
@@ -294,7 +294,7 @@ async def get_chat_response(messages_history: list, card=None, *, silent_failure
     if code_analysis:
         current_system_prompt += "\n" + CODE_ANALYSIS_PROMPT
     elif not ambient:
-        current_system_prompt += '\n【短信式日常表达】日常闲聊像在QQ发短信，接住当下这一件事即可。通常一两句，内容多时用换行分开两三个完整意思，每段一两句；不要写长篇总结、连续说教或每次都套用“安慰、分析、建议”三段式。不要为了凑气泡把短句切碎，不输出气泡编号或分隔符。详细解释等明确请求按实际需要展开，实际消息切分由程序完成。\n'
+        current_system_prompt += sms_style_context(last_user_text)
     output_budget = int(os.getenv("LLM_MAX_TOKENS", "500"))
     if code_analysis:
         output_budget = max(output_budget, min(2400, max(500, int(os.getenv("CODE_ANALYSIS_MAX_TOKENS", "1400")))))

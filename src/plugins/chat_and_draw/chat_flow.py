@@ -10,6 +10,7 @@ from nonebot.adapters.onebot.v11 import Bot, Event, MessageSegment
 from nonebot.typing import T_State
 from .llm import ServiceNotice
 from .code_analysis import needs_code_analysis
+from .conversation import brief_chat
 from .qq_text import qq_plain_text, qq_chunks, sms_chunks, source_text
 from .config import MAX_IMAGES, feature_enabled
 from .sessions import session_key, trim_history
@@ -153,7 +154,8 @@ class ChatFlow:
                 cooldown = max(0, float(os.getenv('STICKER_COOLDOWN', '30')))
                 allow_sticker = time.time() - session.last_sticker_time >= cooldown or bool(re.search('表情包|动图', text))
                 try:
-                    delivery = await self.send_reply(reply, draw, sticker, (voice or explicit_voice) and (not ambient) and (not service_notice) and (not code_analysis), allow_sticker=allow_sticker, defer_draw=partial(self.enqueue_draw, self.store, bot, event), character=session.character, sticker_context=text + ' ' + reply, text_mode='technical' if code_analysis or service_notice else 'chat', bubble_limit=1 if ambient else 2 if group_context else 3)
+                    bubble_limit = 1 if ambient else 2 if group_context or brief_chat(text) else 3
+                    delivery = await self.send_reply(reply, draw, sticker, (voice or explicit_voice) and (not ambient) and (not service_notice) and (not code_analysis), allow_sticker=allow_sticker, defer_draw=partial(self.enqueue_draw, self.store, bot, event), character=session.character, sticker_context=text + ' ' + reply, text_mode='technical' if code_analysis or service_notice else 'chat', bubble_limit=bubble_limit)
                 except Exception as exc:
                     log_send_error('reply-pipeline', exc)
                     await record('reply-pipeline', 'failed', error=type(exc).__name__)
