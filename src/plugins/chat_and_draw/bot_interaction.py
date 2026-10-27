@@ -89,6 +89,8 @@ class BotInteractions:
                                        time.time(), 'reactive', identity, addressed)
 
     def reserve(self, bot_id, group_id, peer, now, kind, identity=None, addressed=False):
+        if kind == 'proactive' and not feature_enabled('BOT_INTERACTION_PROACTIVE_ENABLED'):
+            return None
         if not self.allowed(bot_id, group_id, peer):
             return None
         room = self.room(bot_id, group_id)
@@ -106,7 +108,7 @@ class BotInteractions:
                     return None
                 rounds, until, cooldown = state['rounds']+1, state['active_until'], state['cooldown_until']
             else:
-                if state and now < state['cooldown_until']:
+                if state and now < state['active_until'] + number('BOT_INTERACTION_COOLDOWN', 600, 60):
                     return None
                 if kind == 'reactive' and not addressed and random.random() >= min(1, number('BOT_INTERACTION_REPLY_PROBABILITY', .3)):
                     return None
@@ -131,6 +133,8 @@ class BotInteractions:
 
     def valid(self, context, now):
         if not self.allowed(context['bot_id'], context['group_id'], context['target']):
+            return False
+        if context['round'] > self.max_rounds() or (context['kind'] == 'proactive' and not feature_enabled('BOT_INTERACTION_PROACTIVE_ENABLED')):
             return False
         with self.connect() as conn:
             row = conn.execute('SELECT ticket,active_until FROM bot_interaction_rooms WHERE room=?', (context['room'],)).fetchone()

@@ -11,6 +11,10 @@ load_dotenv(ROOT / ".env.local", override=True)
 
 
 def feature_enabled(name: str) -> bool:
+    from .participation_config import override
+    value = override(name)
+    if value is not None:
+        return value
     return os.getenv(name, "true").strip().lower() in {"true", "1", "yes", "on"}
 
 

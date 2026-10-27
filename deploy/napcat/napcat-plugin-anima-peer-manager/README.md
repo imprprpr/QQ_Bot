@@ -76,3 +76,18 @@ NapCat → 扩展页面 → AnimaBot 主动聊天，可控制私聊主动聊天�
 node --test deploy/napcat/napcat-plugin-anima-peer-manager/*.test.mjs
 python -m unittest discover -s tests -p test_proactive.py
 ```
+
+
+## 群聊与互聊页面（1.3.0）
+
+扩展页面 → AnimaBot 群聊与互聊，分别管理非 @ 群聊参与与指定 bot 互聊：开关、自主插话开关、冷却、接话窗口、轮次、概率、每小时和滚动24小时尝试次数。bot 每轮硬上限3条（含开场），互聊的群和QQ仍使用原生名单页，名单页的互动开关也需开启。普通成员的明确 @ 不受自动参与开关和额度限制。
+
+首次安装时先从旧配置生成共享文件：
+
+```bash
+python tools/seed_participation_config.py --output /宿主机/NapCat/config/plugins/napcat-plugin-anima-peer-manager/config.json.participation.json
+```
+
+将 `BOT_PARTICIPATION_CONFIG_FILE` 指向这个宿主机路径，并重启 Bot 一次。共享文件及目录权限同模型提供商页面（文件0640、共享组、目录setgid），不要放入静态目录。脚本拒绝覆盖已有文件。未配置共享文件时沿用环境变量，接入后读取失败时暂停非 @ 参与和互聊，已知 bot 隔离名单继续保留。
+
+之后保存立即影响后续群消息和轮次判断，无需重启；后台主动互聊在下次检查采用。降低轮次会取消尚未发送且已超出新上限的回复。冷却用原有时间戳与新间隔计算，互聊窗口长度仅影响新一轮，不借保存重置已用额度和轮次。

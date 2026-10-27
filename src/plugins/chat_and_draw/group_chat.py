@@ -14,7 +14,9 @@ from .database import database
 
 
 def number(name, default, minimum=0):
-    return max(minimum, float(os.getenv(name, str(default))))
+    from .participation_config import override
+    value = override(name)
+    return max(minimum, float(value if value is not None else os.getenv(name, str(default))))
 
 
 class GroupChat:
@@ -151,6 +153,15 @@ class GroupChat:
                 global_hourly = conn.execute('SELECT COUNT(*) FROM group_chat_calls WHERE created>?', (now - 3600,)).fetchone()[0]
                 if hourly >= number('GROUP_CHAT_HOURLY_LIMIT', 12) or global_hourly >= number('GROUP_CHAT_GLOBAL_HOURLY_LIMIT', 40):
                     return None
+                daily = conn.execute('SELECT COUNT(*) FROM group_chat_calls WHERE room=? AND created>?', (room, now-86400)).fetchone()[0]
+                global_daily = conn.execute('SELECT COUNT(*) FROM group_chat_calls WHERE created>?', (now-86400,)).fetchone()[0]
+                if daily >= number('GROUP_CHAT_DAILY_LIMIT', 60) or global_daily >= number('GROUP_CHAT_GLOBAL_DAILY_LIMIT', 200):
+                    return None
+                if mode == 'followup':
+                    rounds = conn.execute("SELECT COUNT(*) FROM group_chat_calls WHERE room=? AND mode='followup' AND created>?",
+                        (room, now-number('GROUP_CHAT_FOLLOWUP_WINDOW', 180))).fetchone()[0]
+                    if rounds >= number('GROUP_CHAT_FOLLOWUP_MAX_ROUNDS', 3):
+                        return None
                 if mode == 'ambient':
                     recent = [line for line in lines if line[2] >= now - 300 and not line[0].startswith('bot:')]
                     counts = conn.execute("SELECT SUM(created>?),COUNT(*) FROM group_chat_calls WHERE room=? AND mode='ambient' AND created>?",

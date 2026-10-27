@@ -147,6 +147,9 @@ class ChatFlow:
                     (draw, sticker, voice) = (None, None, False)
                     if not reply:
                         return
+                if group_context and group_context['mode'] != 'mention':
+                    if not self.group_chat.allowed(event) or (ambient and not feature_enabled('GROUP_CHAT_AMBIENT_ENABLED')):
+                        return
                 service_notice = isinstance(reply, ServiceNotice)
                 if code_analysis:
                     draw, sticker, voice = None, None, False
