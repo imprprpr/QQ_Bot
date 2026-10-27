@@ -130,7 +130,7 @@ class CommandHandlers:
             session.proactive = value in {'on', '开启'}
             session.touch()
             await self.store.save(session)
-            await self.cmd_proactive.send('主动聊天已开启：按配置时区在日间随机问候，遵守闲置时间和每日上限；未回复时暂停。/proactive off 可关闭。' if session.proactive else '主动聊天已关闭。')
+            await self.cmd_proactive.send('主动聊天已开启：按人设偶尔分享兴趣、吐槽或找个小借口搭话，遵守闲置、冷却和每日额度；未回复时暂停。/proactive off 可关闭。' if session.proactive else '主动聊天已关闭。')
 
     async def handle_draw(self, bot: Bot, event: Event, args: Message=CommandArg()):
         if not feature_enabled('DRAW_ENABLED'):

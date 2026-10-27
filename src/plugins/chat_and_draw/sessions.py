@@ -56,13 +56,16 @@ class Session:
     proactive_day: str = ""
     proactive_attempts: int = 0
     proactive_unanswered: bool = False
+    proactive_last_attempt: float = 0
+    proactive_last_text: str = ''
+    proactive_topics: list[str] = field(default_factory=list)
 
     def touch(self):
         self.proactive_unanswered = False
         self.last_interaction = time.time()
         if self.proactive:
             from .proactive import local_now, next_time
-            self.next_proactive = next_time(local_now(), self.last_interaction)
+            self.next_proactive = next_time(local_now(), self.last_interaction, self.proactive_last_attempt)
         else:
             self.next_proactive = 0
 
@@ -148,6 +151,27 @@ class SessionStore:
             with self.database.transaction() as conn:
                 self._save_conn(conn, snapshot)
         await asyncio.to_thread(write)
+
+    async def reserve_proactive(self, session, day, epoch, topic, global_limit):
+        """Reserve per-user and global attempts atomically before a model call."""
+        snapshot = deepcopy(session)
+        def reserve():
+            self.initialize()
+            with self.database.transaction() as conn:
+                total = 0
+                for row in conn.execute('SELECT data FROM sessions'):
+                    data = json.loads(row[0])
+                    if data.get('private', True) and data.get('proactive_day') == day:
+                        total += data.get('proactive_attempts', 0)
+                if total >= global_limit:
+                    return None
+                snapshot.proactive_attempts = (snapshot.proactive_attempts if snapshot.proactive_day == day else 0) + 1
+                snapshot.proactive_day = day
+                snapshot.proactive_last_attempt = epoch
+                snapshot.proactive_topics = (snapshot.proactive_topics + [topic])[-3:]
+                self._save_conn(conn, snapshot)
+                return snapshot
+        return await asyncio.to_thread(reserve)
 
     async def switch_character(self, session, character, greeting=''):
         """Persist old role and select/restore the new role in one transaction."""

@@ -8,12 +8,12 @@ from nonebot import logger
 from .media import cleanup_tts_cache
 from .image_history import cleanup_images
 from .memory import EventMemoryStore
-from .qq_text import qq_plain_text
 
 class BackgroundLifecycle:
 
     async def run_proactive_once(self, now=None):
-        from .proactive import local_now, in_window, eligible, next_time
+        from .proactive import local_now, in_window, eligible, next_time, choose_topic, opener_prompt, opener_text, global_daily_limit
+        from .llm import ServiceNotice
         from .sessions import trim_history
         now = local_now() if now is None else now
         if not in_window(now):
@@ -24,39 +24,43 @@ class BackgroundLifecycle:
                 session = await self.store.load(key)
                 if not session.proactive or not session.private or session.next_proactive > epoch:
                     continue
-                session.next_proactive = next_time(now, max(session.last_interaction, epoch))
+                session.next_proactive = next_time(now, max(session.last_interaction, epoch), max(session.proactive_last_attempt, epoch))
                 if not eligible(session, now):
                     await self.store.save(session)
                     continue
                 day = now.date().isoformat()
-                session.proactive_attempts = (session.proactive_attempts if session.proactive_day == day else 0) + 1
-                session.proactive_day = day
-                await self.store.save(session)  # Reserve budget before any API call, survives restart.
+                topic = choose_topic(session)
+                reserved = await self.store.reserve_proactive(session, day, epoch, topic, global_daily_limit())
+                if reserved is None:
+                    await self.store.save(session)
+                    return
+                session = reserved
                 last_interaction, character = session.last_interaction, session.character
             try:
                 bot = self.get_bot(session.bot_id)
                 history = [{'role': m['role'], 'content': m['content']} for m in session.history[-6:]]
-                history.append({'role': 'user', 'content':
-                    f'[主动问候提示：当地时间{now:%H:%M}，用户已一段时间没有聊天。按人设自然开启一个轻松话题或简短问候，最多80字。'
-                    '仅文字，不输出任何工具标签；不声称知道用户正在做什么，不催促或责怪对方回复，也不编造网络故障。]'})
+                history.append({'role': 'user', 'content': opener_prompt(session, topic)})
                 (reply, _, _, _) = await self.get_chat_response(history, card=self.current_card(session),
                     silent_failure=True, memory_context={'memories': session.memories, 'summary': session.summary})
-                reply = ' '.join(qq_plain_text(reply).split())[:160]
+                reply = '' if isinstance(reply, ServiceNotice) else opener_text(reply, session.proactive_last_text)
                 if not reply:
-                    continue
+                    return
                 async with self.store.lock(key):
                     current = await self.store.load(key)
                     # A human message or role/opt-in change during generation cancels this greeting.
                     if (not current.proactive or current.proactive_unanswered
                             or current.last_interaction != last_interaction or current.character != character):
-                        continue
+                        return
                     current.proactive_unanswered = True
+                    current.proactive_last_text = reply
                     await self.store.save(current)  # Ambiguous send failures must not duplicate a greeting.
                     await asyncio.wait_for(bot.send_private_msg(user_id=int(current.user_id), message=reply), 20)
                     current.history = trim_history(current.history + [{'role': 'assistant', 'content': reply}])
                     await self.store.save(current)
             except Exception as exc:
                 logger.warning('Proactive message failed: {}', type(exc).__name__)
+            # At most one reserved attempt per cycle, including failures/skips.
+            return
 
     async def proactive_chat(self):
         while True:

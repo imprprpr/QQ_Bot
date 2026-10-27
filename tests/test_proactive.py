@@ -1,5 +1,6 @@
 """No real QQ sends: exercise persisted limits and user-message races."""
 import os
+import asyncio
 import tempfile
 import unittest
 from datetime import datetime, timezone, timedelta
@@ -9,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 from test_bot import plugin, Event, llm, delivery_module
 from src.plugins.chat_and_draw.sessions import Session, SessionStore, session_key
-from src.plugins.chat_and_draw.proactive import eligible, next_time, in_window
+from src.plugins.chat_and_draw.proactive import eligible, next_time, in_window, choose_topic, opener_prompt, opener_text
 
 
 class ProactiveTests(unittest.IsolatedAsyncioTestCase):
@@ -21,7 +22,7 @@ class ProactiveTests(unittest.IsolatedAsyncioTestCase):
                                next_proactive=1, last_interaction=self.now.timestamp()-4*3600)
         await self.store.save(self.session)
         self.bot = SimpleNamespace(send_private_msg=AsyncMock())
-        self.env = patch.dict(os.environ, PROACTIVE_MODE='windows', PROACTIVE_IDLE_HOURS='3', PROACTIVE_DAILY_LIMIT='2')
+        self.env = patch.dict(os.environ, PROACTIVE_MODE='windows', PROACTIVE_IDLE_HOURS='3', PROACTIVE_DAILY_LIMIT='2', PROACTIVE_COOLDOWN_HOURS='6', PROACTIVE_GLOBAL_DAILY_LIMIT='6')
         self.env.start()
 
     async def asyncTearDown(self):
@@ -72,6 +73,74 @@ class ProactiveTests(unittest.IsolatedAsyncioTestCase):
         session = await self.store.load('one')
         self.assertEqual(session.proactive_attempts, 1)
         self.assertFalse(session.proactive_unanswered)
+
+    async def test_topic_and_cooldown_survive_restart_even_after_failed_generation(self):
+        await self.cycle(AsyncMock(return_value=('',None,None,False)))
+        stored=await SessionStore(self.store.path).load('one')
+        self.assertEqual(stored.proactive_last_attempt,self.now.timestamp())
+        self.assertEqual(len(stored.proactive_topics),1)
+        stored.last_interaction=self.now.timestamp()-4*3600
+        self.assertFalse(eligible(stored,self.now+timedelta(hours=1)))
+        self.assertTrue(eligible(stored,self.now+timedelta(hours=7)))
+
+    async def test_user_reply_does_not_reset_proactive_cooldown(self):
+        self.session.proactive_last_attempt=self.now.timestamp()
+        later=self.now+timedelta(hours=1)
+        with patch('src.plugins.chat_and_draw.sessions.time.time',return_value=later.timestamp()), patch('src.plugins.chat_and_draw.proactive.local_now',return_value=later):
+            self.session.touch()
+        self.assertGreaterEqual(self.session.next_proactive,self.now.timestamp()+6*3600)
+
+    async def test_global_reservation_is_atomic_across_recipients(self):
+        second=Session('two',bot_id='999',user_id='456',proactive=True,last_interaction=self.session.last_interaction,next_proactive=1)
+        await self.store.save(second)
+        reserved=await asyncio.gather(*(self.store.reserve_proactive(s,self.now.date().isoformat(),self.now.timestamp(),'interest',1) for s in [self.session,second]))
+        self.assertEqual(sum(s is not None for s in reserved),1)
+        states=[await self.store.load(key) for key in ['one','two']]
+        self.assertEqual(sum(s.proactive_attempts for s in states),1)
+
+    async def test_one_attempt_per_cycle_even_if_generated_text_is_skipped(self):
+        await self.store.save(Session('two',bot_id='999',user_id='456',proactive=True,last_interaction=self.session.last_interaction,next_proactive=1))
+        model=await self.cycle(AsyncMock(return_value=('[不打扰]',None,None,False)))
+        self.assertEqual(model.await_count,1)
+        self.bot.send_private_msg.assert_not_awaited()
+
+    async def test_global_budget_blocks_model_call(self):
+        with patch.dict(os.environ,PROACTIVE_GLOBAL_DAILY_LIMIT='0'):
+            model=await self.cycle()
+        model.assert_not_awaited()
+
+    async def test_duplicate_and_operational_notice_never_sent(self):
+        self.session.proactive_last_text='老大，我刚想到一个有趣的小问题。'
+        await self.store.save(self.session)
+        await self.cycle(AsyncMock(return_value=('老大！我刚想到一个有趣的小问题。',None,None,False)))
+        self.bot.send_private_msg.assert_not_awaited()
+        stored=await self.store.load('one')
+        self.assertFalse(stored.proactive_unanswered)
+        self.assertEqual(stored.proactive_attempts,1)
+
+    async def test_notice_during_proactive_request_stays_silent(self):
+        await self.cycle(AsyncMock(return_value=(llm.ServiceNotice('模型正在限流'),None,None,False)))
+        self.bot.send_private_msg.assert_not_awaited()
+
+    async def test_selected_topic_not_greeting_and_used_with_current_persona(self):
+        model=await self.cycle()
+        prompt=model.await_args.args[0][-1]['content']
+        self.assertIn('主动搭话任务',prompt)
+        self.assertIn('不劝睡',prompt)
+        self.assertIn('当前角色',prompt)
+        self.assertIn('最多70字',prompt)
+        stored=await self.store.load('one')
+        self.assertEqual(stored.proactive_last_text,'hello')
+
+    def test_topic_rotation_avoids_recent_three(self):
+        self.session.proactive_topics=['interest','opinion','excuse']
+        self.assertEqual(choose_topic(self.session),'choice')
+        self.assertIn('小选择',opener_prompt(self.session,'choice'))
+
+    def test_validation_rejects_templates_tools_and_long_text_without_cutting(self):
+        for text in ['[不打扰]','[不参与]','不打扰。','【不参与】','<voice>','[CQ:face,id=1]','https://example.com','很长的句子'*20]:
+            self.assertEqual(opener_text(text),'')
+        self.assertEqual(opener_text('**我有个小纠结。**'),'我有个小纠结。')
 
     def test_random_next_time_stays_in_local_window_after_idle(self):
         for _ in range(50):
