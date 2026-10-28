@@ -91,14 +91,17 @@ class BackgroundLifecycle:
     async def proactive_chat(self):
         while True:
             await asyncio.sleep(300)
-            try:
-                await self.run_proactive_once()
-                await self.run_bot_interaction_once()
-                await asyncio.to_thread(cleanup_tts_cache)
-                await asyncio.to_thread(cleanup_images)
-                await asyncio.to_thread(self.group_chat.cleanup)
-            except Exception as exc:
-                logger.warning('Proactive cycle failed: {}', type(exc).__name__)
+            # Each step is isolated so one recurring failure cannot starve the others.
+            steps = (('proactive', self.run_proactive_once),
+                     ('bot-interaction', self.run_bot_interaction_once),
+                     ('tts-cache-cleanup', lambda: asyncio.to_thread(cleanup_tts_cache)),
+                     ('image-cleanup', lambda: asyncio.to_thread(cleanup_images)),
+                     ('group-chat-cleanup', lambda: asyncio.to_thread(self.group_chat.cleanup)))
+            for name, step in steps:
+                try:
+                    await step()
+                except Exception:
+                    logger.opt(exception=True).error('Background step failed: {}', name)
 
     async def start_background_task(self):
         if self._background_task is None or self._background_task.done():

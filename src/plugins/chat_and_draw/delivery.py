@@ -51,22 +51,27 @@ async def try_send(matcher, message, stage):
     text = message if isinstance(message, str) else getattr(message, "data", {}).get("text", "")
     try:
         response = await matcher.send(message)
-        message_id = response.get("message_id") if isinstance(response, dict) else None
-        scope = current_scope.get()
-        if scope:
-            try:
-                await scope.store.outgoing(scope, kind, str(text), "sent", message_id)
-            except Exception as exc:
-                logger.warning("Message sent; audit write failed: {}", type(exc).__name__)
-        await record("send:" + stage, "completed", message_id=message_id, kind=kind)
-        logger.info("QQ delivery accepted: stage={}", stage)
-        return True
     except Exception as exc:
         log_send_error(stage, exc)
         info = getattr(exc, "info", {})
         await record("send:" + stage, "failed", error=type(exc).__name__,
                      retcode=info.get("retcode") if isinstance(info, dict) else None)
         return False
+    # The message is out. Bookkeeping failures below must not report a send failure,
+    # otherwise callers send fallbacks and the user gets the same reply twice.
+    message_id = response.get("message_id") if isinstance(response, dict) else None
+    scope = current_scope.get()
+    if scope:
+        try:
+            await scope.store.outgoing(scope, kind, str(text), "sent", message_id)
+        except Exception:
+            logger.opt(exception=True).warning("Message sent; audit write failed: stage={}", stage)
+    try:
+        await record("send:" + stage, "completed", message_id=message_id, kind=kind)
+    except Exception:
+        logger.opt(exception=True).warning("Message sent; run record failed: stage={}", stage)
+    logger.info("QQ delivery accepted: stage={}", stage)
+    return True
 
 
 async def deliver_image(matcher, image, result):

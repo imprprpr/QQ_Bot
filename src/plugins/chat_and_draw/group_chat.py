@@ -197,7 +197,8 @@ class GroupChat:
                     cap=number('GROUP_CHAT_FOLLOWUP_MAX_ROUNDS',6)
                     if rounds >= cap:
                         expiries=sorted(r[0]+number('GROUP_CHAT_FOLLOWUP_WINDOW',300) for r in conn.execute('SELECT created FROM group_chat_turns WHERE room=? AND participant=? AND created>?',(room,participant,now-number('GROUP_CHAT_FOLLOWUP_WINDOW',300))))
-                        return blocked('rounds',expiries[rounds-int(cap)])
+                        # cap may be 0 (env override below the schema minimum): nothing to wait for.
+                        return blocked('rounds',expiries[rounds-int(cap)] if cap>0 and expiries else 0)
                 if mode == 'ambient':
                     recent = [line for line in lines if line[2] >= now - 300 and not line[0].startswith('bot:')]
                     if not question and (len(recent) < 4 or len({line[0].split(':', 1)[0] for line in recent}) < 2):

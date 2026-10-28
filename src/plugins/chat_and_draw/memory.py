@@ -221,6 +221,8 @@ async def prepare(path, session, source, run_id):
         query = source[:4000] + " " + " ".join(str(m.get("content", "")) for m in session.history[-4:] if m["role"] == "user")
         return await store.recall(session.key, session.character, query)
     except Exception as exc:
-        logger.warning("Event memory unavailable: {}", type(exc).__name__)
+        # Extraction already fails open inside extract(); reaching here means the memory
+        # database could not be read or written, so the user's update may be lost.
+        logger.opt(exception=True).error("Event memory store failed for {}: {}", session.key, type(exc).__name__)
         await record("event-memory", "failed", error=type(exc).__name__)
         return []
