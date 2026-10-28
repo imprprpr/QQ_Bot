@@ -1,9 +1,9 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import https from 'node:https';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import { randomUUID } from 'node:crypto';
+import {UserError,atomicWriteJson,conflict,fail,jsonRoute} from './shared.mjs?v=1.8.0';
 
 export const presets = [
   {id:'custom', name:'自定义兼容 API', base_url:''},
@@ -12,7 +12,6 @@ export const presets = [
   {id:'openrouter', name:'OpenRouter', base_url:'https://openrouter.ai/api/v1'},
   {id:'gemini', name:'Gemini API（兼容接口）', base_url:'https://generativelanguage.googleapis.com/v1beta/openai'},
 ];
-const fail = message => { throw new Error(message); };
 export function baseUrl(value) {
   let url;
   try { url = new URL(String(value)); } catch { fail('请填写完整的 HTTPS API 基址'); }
@@ -37,14 +36,8 @@ export function publicModels(data) {
 }
 function writeModels(file,data) {
   data.revision=randomUUID();
-  const temp=file+'.'+randomUUID()+'.tmp';
-  fs.mkdirSync(path.dirname(file),{recursive:true});
-  try {
-    const fd=fs.openSync(temp,'wx',0o640);
-    try {fs.writeFileSync(fd,JSON.stringify(data,null,2)+'\n');fs.fsyncSync(fd);} finally {fs.closeSync(fd);}
-    fs.renameSync(temp,file);
-    fs.chmodSync(file,0o640);
-  } finally {if(fs.existsSync(temp)) fs.unlinkSync(temp);}
+  atomicWriteJson(file,data);
+  fs.chmodSync(file,0o640);
   return publicModels(data);
 }
 function profileInput(data,input) {
@@ -58,7 +51,7 @@ function profileInput(data,input) {
 }
 export function mutateModels(file,input,operation) {
   const data=readModels(file);
-  if(input.revision!==data.revision) fail('配置已更新，请刷新后重试');
+  if(input.revision!==data.revision) conflict('配置已在其他页面更新，请重新读取后再试');
   if(operation==='save') {
     const profile=profileInput(data,input);
     if(!profile.model) fail('请先选择或手动填写模型 ID');
@@ -88,21 +81,21 @@ export async function listModels(file,input,transport={lookup:dns.lookup,get:htt
   const profile=profileInput(readModels(file),input);
   const url=new URL(profile.base_url+'/models');
   let dnsTimer;
-  const addresses=await Promise.race([transport.lookup(url.hostname,{all:true}),new Promise((_,reject)=>{dnsTimer=setTimeout(()=>reject(new Error('解析提供商地址超时')),8000);})]).finally(()=>clearTimeout(dnsTimer));
+  const addresses=await Promise.race([transport.lookup(url.hostname,{all:true}),new Promise((_,reject)=>{dnsTimer=setTimeout(()=>reject(new UserError('解析提供商地址超时')),8000);})]).finally(()=>clearTimeout(dnsTimer));
   if(!addresses.length || addresses.some(a=>!publicAddress(a.address))) fail('不允许连接内网或保留地址');
   const chosen=addresses.find(a=>a.family===4)||addresses[0];
   const data=await new Promise((resolve,reject)=>{
     const req=transport.get(url,{headers:{Authorization:'Bearer '+profile.api_key,Accept:'application/json'},
       lookup:(_host,options,callback)=>options?.all ? callback(null,[chosen]) : callback(null,chosen.address,chosen.family)},res=>{
-      if(res.statusCode!==200) {res.resume();reject(new Error('模型列表请求失败，HTTP '+res.statusCode+'；请检查密钥、额度和地址'));return;}
+      if(res.statusCode!==200) {res.resume();reject(new UserError('模型列表请求失败，HTTP '+res.statusCode+'；请检查密钥、额度和地址'));return;}
       let size=0;const chunks=[];
-      res.on('data',chunk=>{size+=chunk.length;if(size>2*1024*1024) res.destroy(new Error('列表响应过大'));else chunks.push(chunk);});
-      res.on('error',()=>reject(new Error('读取模型列表失败')));
-      res.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));}catch{reject(new Error('提供商未返回有效的模型列表'));}});
+      res.on('data',chunk=>{size+=chunk.length;if(size>2*1024*1024) res.destroy(new UserError('列表响应过大'));else chunks.push(chunk);});
+      res.on('error',()=>reject(new UserError('读取模型列表失败')));
+      res.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));}catch{reject(new UserError('提供商未返回有效的模型列表'));}});
     });
     const timer=setTimeout(()=>req.destroy(new Error('MODEL_LIST_TIMEOUT')),15000);
     req.on('close',()=>clearTimeout(timer));
-    req.on('error',()=>reject(new Error('无法连接提供商或请求超时，请检查地址和线路')));
+    req.on('error',()=>reject(new UserError('无法连接提供商或请求超时，请检查地址和线路')));
   });
   if(!Array.isArray(data.data)) fail('此接口不支持兼容模型列表，请手动填写模型 ID');
   return [...new Set(data.data.map(p=>p.id).filter(id=>typeof id==='string'&&id.length<=200))].sort().slice(0,2000);
@@ -110,17 +103,10 @@ export async function listModels(file,input,transport={lookup:dns.lookup,get:htt
 export function registerModels(ctx) {
   if(!ctx.router) return;
   const file=ctx.configPath+'.models.json';
-  const handler=fn=>async(req,res)=>{
-    res.setHeader('Cache-Control','no-store');
-    try {
-      const origin=req.headers?.origin;
-      if(origin && new URL(origin).host!==req.headers.host) {res.status(403).json({code:403,message:'跨站请求被拒绝'});return;}
-      res.json({code:0,data:await fn(req.body||{})});
-    } catch(error) {res.status(400).json({code:400,message:String(error.message).slice(0,180)});}
-  };
+  const handler=(fn,fallback='模型配置读写失败，详情见 NapCat 日志。')=>jsonRoute(ctx,fn,{fallback});
   // Use NapCat's authenticated routes, never expose provider secrets as static files.
   ctx.router.get('/models/config',handler(()=>({...publicModels(readModels(file)),presets})));
   for(const op of ['save','activate','delete']) ctx.router.post('/models/'+op,handler(input=>mutateModels(file,input,op)));
-  ctx.router.post('/models/list',handler(input=>listModels(file,input)));
+  ctx.router.post('/models/list',handler(input=>listModels(file,input),'无法连接提供商或请求超时，请检查地址和线路'));
   ctx.router.page({path:'models',title:'AnimaBot 模型提供商',htmlFile:'models.html',icon:'🔌',description:'配置 API、拉取模型与切换聊天模型'});
 }

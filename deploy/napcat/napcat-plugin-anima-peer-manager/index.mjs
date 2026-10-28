@@ -1,39 +1,36 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { registerModels } from './models.mjs?v=1.7.0';
-
-import { registerProactive } from './proactive.mjs?v=1.7.0';
-
-import { registerParticipation } from './participation.mjs?v=1.7.0';
-
-import { registerMonitor } from './monitor.mjs?v=1.7.0';
-
-import { registerPersonas } from './personas.mjs?v=1.7.0';
+import { registerModels } from './models.mjs?v=1.8.0';
+import { registerProactive } from './proactive.mjs?v=1.8.0';
+import { registerParticipation } from './participation.mjs?v=1.8.0';
+import { registerMonitor } from './monitor.mjs?v=1.8.0';
+import { registerPersonas } from './personas.mjs?v=1.8.0';
+import { atomicWriteJson, conflict, fail } from './shared.mjs?v=1.8.0';
 
 const MAX_IDS = 1000;
 export function parseIds(value) {
   const input = Array.isArray(value) ? value : String(value ?? '').split(/[\s,，;；]+/u);
   const values = [...new Set(input.map(item => String(item).trim()).filter(Boolean))];
   if (values.length > MAX_IDS || values.some(item => !/^[1-9][0-9]{0,19}$/.test(item))) {
-    throw new Error('号码必须为1至20位纯数字，每个列表最多1000项；支持逗号、空格或换行分隔。');
+    fail('号码必须为1至20位纯数字，每个列表最多1000项；支持逗号、空格或换行分隔。');
   }
   return values.sort((a, b) => a.length - b.length || a.localeCompare(b));
 }
 
 export function readConfig(filename) {
   if (!fs.existsSync(filename)) return {schema_version: 1, revision: '', enabled: true, targets: [], groups: [], known_targets: []};
-  if (fs.statSync(filename).size > 256 * 1024) throw new Error('配置文件过大');
+  if (fs.statSync(filename).size > 256 * 1024) fail('配置文件过大');
   const data = JSON.parse(fs.readFileSync(filename, 'utf8'));
-  if (data.schema_version !== 1 || typeof data.enabled !== 'boolean') throw new Error('配置格式不兼容');
+  if (data.schema_version !== 1 || typeof data.enabled !== 'boolean') fail('配置格式不兼容');
   return {...data, targets: parseIds(data.targets), groups: parseIds(data.groups),
     known_targets: parseIds(data.known_targets ?? data.targets)};
 }
 
 export function saveConfig(filename, incoming) {
   const old = readConfig(filename);
-  if (typeof incoming.enabled !== 'boolean') throw new Error('启用状态必须为开关值');
-  if (incoming.revision !== undefined && incoming.revision !== old.revision) throw new Error('配置已在其他页面更新，请重新打开配置后保存。');
+  if (typeof incoming.enabled !== 'boolean') fail('启用状态必须为开关值');
+  if (incoming.revision !== undefined && incoming.revision !== old.revision) conflict('配置已在其他页面更新，请重新打开配置后保存。');
   const merge = (selected, add, remove) => {
     const removing = new Set(parseIds(remove));
     return parseIds([...parseIds(selected), ...parseIds(add)]).filter(id => !removing.has(id));
@@ -45,21 +42,9 @@ export function saveConfig(filename, incoming) {
     updated_at: new Date().toISOString()};
   // A separate quarantine list still identifies removed bots if the main file
   // is accidentally damaged before AnimaBot restarts. It cannot enable sends.
-  atomicWrite(filename + '.known.json', {known_targets: data.known_targets});
-  atomicWrite(filename, data);
+  atomicWriteJson(filename + '.known.json', {known_targets: data.known_targets}, {mode: 0o644});
+  atomicWriteJson(filename, data, {mode: 0o644});
   return data;
-}
-
-function atomicWrite(filename, data) {
-  const content = JSON.stringify(data, null, 2) + '\n';
-  if (Buffer.byteLength(content) > 256 * 1024) throw new Error('配置文件过大');
-  fs.mkdirSync(path.dirname(filename), {recursive: true});
-  const temporary = filename + '.' + randomUUID() + '.tmp';
-  try {
-    const fd = fs.openSync(temporary, 'wx', 0o644);
-    try { fs.writeFileSync(fd, content); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-    fs.renameSync(temporary, filename);
-  } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
 }
 
 const labelIds = (list, current, key, label) => {
@@ -90,7 +75,10 @@ async function contacts(ctx, action) {
       new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('CONTACT_TIMEOUT')), 4000); })
     ]);
     return Array.isArray(result) ? result : Array.isArray(result?.data) ? result.data : [];
-  } catch { return []; } finally { clearTimeout(timer); }
+  } catch (error) {
+    ctx.logger?.warn?.(`AnimaBot 读取${action === 'get_friend_list' ? '好友' : '群'}列表失败，选项中只显示已保存的号码：`, error?.message);
+    return [];
+  } finally { clearTimeout(timer); }
 }
 export async function plugin_get_config(ctx) {
   const data = readConfig(ctx.configPath);
@@ -110,6 +98,11 @@ export async function plugin_init(ctx) {
   registerMonitor(ctx);
   registerPersonas(ctx);
   // Read-only until the operator saves in NapCat; never sends QQ messages.
-  await plugin_get_config(ctx);
-  ctx.logger.info('AnimaBot 群号与QQ管理已加载；请在插件配置中批量编辑并保存。');
+  // A damaged peer file must not leave the plugin half-loaded: the other pages keep working.
+  try {
+    await plugin_get_config(ctx);
+    ctx.logger.info('AnimaBot 群号与QQ管理已加载；请在插件配置中批量编辑并保存。');
+  } catch (error) {
+    ctx.logger.error('AnimaBot 群号配置无法读取，请修复或删除该文件后在插件配置中重新保存：', ctx.configPath, error?.message);
+  }
 }

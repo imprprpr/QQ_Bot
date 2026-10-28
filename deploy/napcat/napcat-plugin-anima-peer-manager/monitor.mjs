@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import http from 'node:http';
+import {jsonRoute} from './shared.mjs?v=1.8.0';
 
 export async function readStatus(file,transport=http.get,kind='participation') {
   const routes={participation:'/manage/api/participation',proactive:'/manage/api/proactive',personas:'/manage/api/persona-catalog'};
@@ -32,11 +33,9 @@ export async function readStatus(file,transport=http.get,kind='participation') {
 
 export function registerMonitor(ctx) {
   if(!ctx.router)return;
-  for(const [route,kind] of [['/participation/status','participation'],['/proactive/status','proactive'],['/personas/catalog','personas']])ctx.router.get(route,async(req,res)=>{
-    res.setHeader('Cache-Control','no-store');
-    try{
-      if(req.headers?.origin&&new URL(req.headers.origin).host!==req.headers.host){res.status(403).json({code:403,message:'跨站请求被拒绝'});return;}
-      res.json({code:0,data:await readStatus(ctx.configPath+'.monitor.json',undefined,kind)});
-    }catch{res.status(503).json({code:503,message:'状态暂不可用，请检查 Bot 服务及本机状态连接配置。设置保存功能不受影响。'});}
-  });
+  // Status is polled every few seconds: a down bot is expected, so do not log each miss.
+  const quiet={...ctx,logger:undefined};
+  for(const [route,kind] of [['/participation/status','participation'],['/proactive/status','proactive'],['/personas/catalog','personas']])
+    ctx.router.get(route,jsonRoute(quiet,()=>readStatus(ctx.configPath+'.monitor.json',undefined,kind),
+      {status:503,fallback:'状态暂不可用，请检查 Bot 服务及本机状态连接配置。设置保存功能不受影响。'}));
 }
