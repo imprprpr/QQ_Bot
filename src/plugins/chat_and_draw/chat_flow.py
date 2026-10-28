@@ -22,6 +22,8 @@ from .incoming_images import read_image
 from .group_chat import GroupChat
 from .participation_status import DecisionLog
 
+MENTION_FALLBACK = '我在呢，你想跟我说什么？'
+
 class ChatFlow:
 
     async def send_reply(self, reply_text, draw_tags, sticker, voice, *, allow_sticker=True, defer_draw=None, character=None, sticker_context='', text_mode='chat', bubble_limit=3):
@@ -150,8 +152,12 @@ class ChatFlow:
                     if ambient:
                         return
                 if group_context and not model_reason and reply.strip().strip('。.!！ ') == '[不参与]':
-                    await outcome('model_declined')
-                    return
+                    if group_context['mode'] != 'mention':
+                        await outcome('model_declined')
+                        return
+                    # A direct @ always deserves an answer; never drop it silently.
+                    logger.warning('Model declined a direct @ mention; sending a short acknowledgement instead')
+                    reply = MENTION_FALLBACK
                 if ambient:
                     declined = reply.strip().strip('。.!！ ') == '[不参与]'
                     reply = reply[:160] if code_analysis else ' '.join(reply.split())[:160]

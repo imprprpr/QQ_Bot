@@ -240,3 +240,36 @@ class GroupTests(unittest.IsolatedAsyncioTestCase):
             await test_bot.llm.get_chat_response([{'role':'user','content':'然后呢'}],group_context={'mode':'followup','messages':[]})
         self.assertIn('【正在接话】',create.await_args.kwargs['messages'][0]['content'])
         self.assertNotIn('先结合群聊上下文判断',create.await_args.kwargs['messages'][0]['content'])
+
+
+class MentionDeclineTests(unittest.IsolatedAsyncioTestCase):
+    # Reuse the group fixture without re-running every GroupTests case.
+    asyncSetUp, asyncTearDown, event = GroupTests.asyncSetUp, GroupTests.asyncTearDown, GroupTests.event
+
+    async def run_with(self, mode, reply):
+        plugin=test_bot.plugin
+        model=AsyncMock(return_value=(reply,None,None,False))
+        with patch.object(plugin,'store',SessionStore(self.path)), patch.object(plugin,'get_chat_response',model), \
+             patch.object(plugin,'prepare_event_memory',AsyncMock(return_value=[])), \
+             patch.object(plugin,'send_reply',AsyncMock(return_value=DeliveryResult(text_sent=True))) as sender:
+            await plugin.handle_message(self.bot,self.event('在吗'),{'group_context':{'mode':mode,'messages':[]}})
+        return sender
+
+    async def test_direct_mention_is_never_silently_dropped(self):
+        from src.plugins.chat_and_draw.chat_flow import MENTION_FALLBACK
+        sender=await self.run_with('mention','[不参与]。')
+        sender.assert_awaited_once()
+        self.assertEqual(sender.await_args.args[0],MENTION_FALLBACK)
+
+    async def test_nickname_and_ambient_may_still_decline(self):
+        for mode in ('nickname','ambient'):
+            with self.subTest(mode=mode):
+                (await self.run_with(mode,'[不参与]')).assert_not_awaited()
+
+    async def test_mention_prompt_forbids_declining(self):
+        llm=test_bot.llm
+        create=AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(finish_reason='stop',message=SimpleNamespace(content='好呀'))],usage=None))
+        client=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        with patch.object(llm,'get_client',return_value=client):
+            await llm.get_chat_response([{'role':'user','content':'在吗'}],group_context={'mode':'mention','messages':[]})
+        self.assertIn('必须回应', create.await_args.kwargs['messages'][0]['content'])
