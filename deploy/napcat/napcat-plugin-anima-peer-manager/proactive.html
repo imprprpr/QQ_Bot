@@ -1,45 +1,396 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AnimaBot 主动聊天</title>
-<style>
-:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#14151b;color:#ececf2}*{box-sizing:border-box}body{max-width:850px;margin:auto;padding:28px}h1{font-size:26px}p,small{color:#b5b8c9;line-height:1.7}a{color:#aebdff}.panel{padding:24px;border:1px solid #353846;border-radius:16px;background:#1e2029;margin:20px 0}label{display:block;margin:18px 0 8px}input{font:inherit;color:inherit;background:#151720;border:1px solid #484c60;border-radius:8px;padding:10px;width:100%}input[type=checkbox]{width:22px;height:22px;vertical-align:middle;margin-right:10px}button{font:inherit;cursor:pointer;background:#30364c;color:inherit;padding:10px 16px;border:1px solid #6474ae;border-radius:8px}button.primary{background:#526cdb}button:disabled{opacity:.5;cursor:wait}.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}.window{display:flex;gap:10px;align-items:center;margin:10px 0}.window input{max-width:140px}.actions{display:flex;gap:12px;flex-wrap:wrap}#notice{white-space:pre-wrap;min-height:48px;color:#b8c8ff;line-height:1.6}.error{color:#ffb6c2!important}@media(max-width:600px){body{padding:16px}.grid{grid-template-columns:1fr}.panel{padding:16px}}
-.scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:10px;border-bottom:1px solid #393c49;text-align:left;white-space:nowrap}td.reason{white-space:normal;min-width:230px}#status-note{white-space:pre-wrap}
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AnimaBot 主动聊天</title>
+<style data-shared="base.css">
+/* AnimaBot shared admin styles. Edit here, then run `node build-ui.mjs` to inline into every page. */
+:root{
+  color-scheme:light;
+  --bg:#f5f6fa;--surface:#ffffff;--field:#ffffff;--line:#e2e6ee;--line-strong:#c3c9d6;
+  --ink:#243044;--muted:#5b6578;--accent:#3f51c4;--accent-hover:#3442b0;--on-accent:#ffffff;
+  --link:#3442b0;--button:#e9ecf7;--button-hover:#dde2f3;--danger:#b4233a;--ok:#1d7a52;
+  --focus:#3f51c4;--toast:#243044;--on-toast:#ffffff;
+  --radius:12px;--gap:20px;--page:1120px;
+  font:15px/1.6 system-ui,"Microsoft YaHei","PingFang SC",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;
+  --bg:#14151b;--surface:#1e2029;--field:#171922;--line:#353846;--line-strong:#4a4e63;
+  --ink:#ececf2;--muted:#b5b8c9;--accent:#3f55c4;--accent-hover:#4a61d4;--on-accent:#ffffff;
+  --link:#aebdff;--button:#2c3142;--button-hover:#363c52;--danger:#ffb6c2;--ok:#8de5be;
+  --focus:#8fa2ff;--toast:#ececf2;--on-toast:#14151b;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink)}
+main{max-width:var(--page);margin:auto;padding:28px 24px 96px}
+h1{font-size:26px;margin:0 0 6px}h2{font-size:18px;margin:0 0 12px}h3{font-size:16px;margin:22px 0 6px}
+p,small,.muted{color:var(--muted)}small{display:block;line-height:1.55;margin-top:4px}
+a{color:var(--link)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin:var(--gap) 0}
+label{display:block;margin:14px 0 6px}
+label.check{display:flex;gap:10px;align-items:center}
+input,textarea,select{font:inherit;color:inherit;background:var(--field);border:1px solid var(--line-strong);border-radius:8px;padding:9px 11px;width:100%;max-width:100%}
+input[type=checkbox]{width:20px;height:20px;padding:0;flex:none;accent-color:var(--accent)}
+textarea{min-height:96px;resize:vertical}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+button{font:inherit;cursor:pointer;color:var(--ink);background:var(--button);border:1px solid var(--line-strong);border-radius:8px;padding:9px 15px}
+button:hover{background:var(--button-hover)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+button.primary:hover{background:var(--accent-hover)}
+button.danger{color:var(--danger)}
+button[aria-pressed="true"],button[aria-current="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+button:disabled{opacity:.55;cursor:not-allowed}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px}
+.actions.sticky{position:sticky;bottom:0;z-index:2;background:var(--bg);margin:0 -24px;padding:12px 24px;border-top:1px solid var(--line)}
+.dirty-flag{color:var(--muted);font-size:13px}
+.dirty-flag[data-dirty="true"]{color:var(--danger)}
+.scroll{overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+td.wrap{white-space:normal;min-width:220px;overflow-wrap:anywhere}
+details.help{margin-top:12px;color:var(--muted)}details.help summary{cursor:pointer;color:var(--ink)}
+.badge{display:inline-block;border:1px solid var(--line-strong);border-radius:999px;padding:2px 10px;font-size:12px}
+.badge.stale{color:var(--danger);border-color:currentColor}
+.error-text{color:var(--danger)}
+.hidden{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#ab-toasts{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:10;display:flex;flex-direction:column;gap:8px;width:min(560px,calc(100% - 32px));pointer-events:none}
+.toast{pointer-events:auto;display:flex;gap:12px;align-items:flex-start;background:var(--toast);color:var(--on-toast);border-radius:10px;padding:11px 14px;box-shadow:0 6px 24px rgba(0,0,0,.25);white-space:pre-wrap}
+.toast.error{border-left:5px solid #e0455f}.toast.ok{border-left:5px solid #2fa36d}
+.toast span{flex:1}
+.toast button{background:transparent;color:inherit;border-color:currentColor;padding:3px 10px;font-size:13px}
+@media (max-width:720px){
+  main{padding:16px 16px 96px}.panel{padding:16px}.grid{grid-template-columns:1fr}
+  .actions.sticky{margin:0 -16px;padding:10px 16px}
+  table.stack thead{display:none}
+  table.stack tr{display:block;border:1px solid var(--line);border-radius:10px;margin:0 0 10px;padding:6px 10px}
+  table.stack td{display:flex;gap:12px;border:0;padding:4px 0}
+  table.stack td::before{content:attr(data-label);color:var(--muted);flex:0 0 38%}
+  table.stack td.wrap{min-width:0}
+  table.stack td[colspan]::before{content:none}
+}
 </style>
-<h1>主动聊天</h1><p>让她偶尔分享兴趣、吐槽或找个小借口搭话。<a href="/webui/" target="_top">返回 NapCat / 登录</a></p>
-<section class="panel"><h2>实时用量与下次搭话</h2><p id="status-note" role="status">正在读取私聊状态…</p><button type="button" id="status-refresh">刷新状态</button><div class="scroll"><table><thead><tr><th>Bot / 用户QQ</th><th>今日已用 / 剩余 / 上限</th><th>冷却剩余</th><th>下次最早预计时间</th><th>当前未主动搭话原因</th><th>最近尝试结果</th></tr></thead><tbody id="status-rows"></tbody></table></div><p>预计时间不是发送承诺；后台检查时还会重新判断。上次未回复、开关关闭或暂停时不提供虚假的预计时间。状态刷新不消耗额度，不修改聊天记录或未保存设置。</p></section>
-<form id="form"><section class="panel">
-<label><input id="enabled" type="checkbox">启用私聊主动聊天</label><small>只作用于已有私聊；用户单独关闭的会话仍保持关闭。群聊与机器人互动使用独立设置。</small>
-<div class="grid">
-<div><label for="utc_offset">时区：UTC 偏移（小时）</label><input id="utc_offset" type="number" min="-12" max="14" step="0.25" required><small>默认 +8 为北京时间；按此时区计算时间段及每日次数。夏令时需自行调整。</small></div>
-<div><label for="idle_hours">多久没有聊天后允许搭话（小时）</label><input id="idle_hours" type="number" min="1" max="24" step="0.5" required></div>
-<div><label for="cooldown_hours">同一私聊的冷却时间（小时）</label><input id="cooldown_hours" type="number" min="3" max="48" step="0.5" required><small>两次主动尝试之间至少间隔这么久，最低3小时。</small></div>
-<div><label for="daily_limit">每个私聊每日最多尝试次数</label><input id="daily_limit" type="number" min="0" max="3" step="1" required><small>0 表示暂停；最多3次。生成失败或选择不打扰也占一次。</small></div>
-<div><label for="global_daily_limit">全部私聊每日合计最多尝试次数</label><input id="global_daily_limit" type="number" min="0" max="20" step="1" required><small>0 表示暂停；最多20次，避免大量调用 API。</small></div>
-</div>
-<label>允许主动聊天的时间段</label><div id="windows"></div><button id="add" type="button">＋ 添加时间段</button><p>使用24小时制，如 08:00 至 10:00。最多8段，不能重叠；跨午夜请拆开填写，结束可填 24:00。</p>
-</section><div class="actions"><button class="primary" id="save" type="submit" disabled>保存并生效</button><button id="reload" type="button">重新读取</button></div></form>
-<p>后台每5分钟检查一次，保存后将在下一次检查采用新设置并重新安排时间，不会立即发送。不会清空今日次数；上次主动消息未获回复时，不会连续打扰。</p>
-<div id="notice" role="status" aria-live="polite">正在读取…</div>
+<style>
+main{--page:900px}
+.window{display:grid;grid-template-columns:auto 1fr 1fr auto;gap:10px;align-items:end;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0}
+.window legend{padding:0 6px;color:var(--muted);font-size:13px}
+.window label{margin:0;font-size:13px}
+@media (max-width:720px){.window{grid-template-columns:1fr 1fr}.window button{grid-column:span 2}}
+</style></head><body><main>
+<header><h1>主动聊天</h1><p>让她偶尔分享兴趣、吐槽或找个小借口搭话。<a href="/webui/" target="_top">返回 NapCat / 登录</a></p></header>
+
+<section class="panel" aria-labelledby="status-title">
+  <h2 id="status-title">实时用量与下次搭话</h2>
+  <div class="row"><p id="status-note" style="flex:1;white-space:pre-wrap;margin:0">正在读取私聊状态…</p><span id="status-badge" class="badge stale hidden">数据已过期</span><button type="button" id="status-refresh" data-free>刷新状态</button></div>
+  <div class="scroll"><table class="stack"><thead><tr><th>Bot / 用户QQ</th><th>今日已用 / 剩余 / 上限</th><th>冷却剩余</th><th>下次最早预计时间</th><th>当前未主动搭话原因</th><th>最近尝试结果</th></tr></thead><tbody id="status-rows"></tbody></table></div>
+  <details class="help"><summary>关于预计时间</summary><p>预计时间不是发送承诺；后台检查时还会重新判断。上次未回复、开关关闭或暂停时不提供虚假的预计时间。状态刷新不消耗额度，不修改聊天记录或未保存设置。</p></details>
+</section>
+
+<form id="form">
+<section class="panel" aria-labelledby="settings-title">
+  <h2 id="settings-title">设置</h2>
+  <label class="check"><input id="enabled" type="checkbox">启用私聊主动聊天</label>
+  <small>只作用于已有私聊；用户单独关闭的会话仍保持关闭。群聊与机器人互动使用独立设置。</small>
+  <div class="grid">
+    <div><label for="utc_offset">时区：UTC 偏移（小时）</label><input id="utc_offset" type="number" min="-12" max="14" step="0.25" required aria-describedby="utc_hint"><small id="utc_hint">默认 +8 为北京时间；按此时区计算时间段及每日次数。夏令时需自行调整。</small></div>
+    <div><label for="idle_hours">多久没有聊天后允许搭话（小时）</label><input id="idle_hours" type="number" min="1" max="24" step="0.5" required></div>
+    <div><label for="cooldown_hours">同一私聊的冷却时间（小时）</label><input id="cooldown_hours" type="number" min="3" max="48" step="0.5" required aria-describedby="cooldown_hint"><small id="cooldown_hint">两次主动尝试之间至少间隔这么久，最低3小时。</small></div>
+    <div><label for="daily_limit">每个私聊每日最多尝试次数</label><input id="daily_limit" type="number" min="0" max="3" step="1" required aria-describedby="daily_hint"><small id="daily_hint">0 表示暂停；最多3次。生成失败或选择不打扰也占一次。</small></div>
+    <div><label for="global_daily_limit">全部私聊每日合计最多尝试次数</label><input id="global_daily_limit" type="number" min="0" max="20" step="1" required aria-describedby="global_hint"><small id="global_hint">0 表示暂停；最多20次，避免大量调用 API。</small></div>
+  </div>
+  <h3 id="windows-title">允许主动聊天的时间段</h3>
+  <small id="windows-hint">使用24小时制，如 08:00 至 10:00。最多8段，不能重叠；跨午夜请拆开填写，结束可填 24:00。</small>
+  <div id="windows" role="group" aria-labelledby="windows-title" aria-describedby="windows-hint"></div>
+  <button id="add" type="button">＋ 添加时间段</button>
+</section>
+<div class="actions sticky"><button class="primary" id="save" type="submit" disabled>保存并生效</button><button id="reload" type="button">重新读取</button><span id="dirty" class="dirty-flag" aria-live="polite"></span></div>
+</form>
+<details class="help"><summary>保存后何时生效</summary><p>后台每5分钟检查一次，保存后将在下一次检查采用新设置并重新安排时间，不会立即发送。不会清空今日次数；上次主动消息未获回复时，不会连续打扰。</p></details>
+</main>
+<script data-shared="base.js">
+// AnimaBot shared admin helpers. Edit here, then run `node build-ui.mjs` to inline into every page.
+'use strict';
+window.AB = (() => {
+  const $ = id => document.getElementById(id);
+
+  class ApiError extends Error {
+    constructor(message, status = 0) { super(message); this.status = status; }
+  }
+
+  // fetch + JSON with readable Chinese errors for network failures, HTML error pages and expired logins.
+  async function request(url, {method, body, headers = {}} = {}) {
+    let response;
+    try {
+      response = await fetch(url, {method: method || (body === undefined ? 'GET' : 'POST'), cache: 'no-store',
+        headers: {'Content-Type': 'application/json', ...headers}, body: body === undefined ? undefined : JSON.stringify(body)});
+    } catch {
+      throw new ApiError('无法连接服务器，请确认服务正在运行、网络正常后重试。');
+    }
+    const text = await response.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { /* non-JSON, e.g. a proxy error page */ }
+    return {response, data};
+  }
+
+  // Client for this plugin's NapCat routes; the NapCat WebUI keeps its login token in localStorage.
+  function napcat(base) {
+    return async (path, body) => {
+      let token = null;
+      try { token = localStorage.getItem('token'); } catch { /* storage blocked */ }
+      if (!token) throw new ApiError('请先返回 NapCat 登录，再重新打开本页面。', 401);
+      const {response, data} = await request(base + path, {body, headers: {Authorization: 'Bearer ' + token}});
+      if (response.status === 401 || data?.code === -1) throw new ApiError('登录已过期，请点击上方链接重新登录 NapCat，再从扩展页面进入。', 401);
+      if (!data) throw new ApiError(`服务器返回了无法识别的内容（HTTP ${response.status}），请刷新页面；若持续出现请查看 NapCat 日志。`, response.status);
+      if (!response.ok || data.code !== 0) throw new ApiError(data.message || `操作失败（HTTP ${response.status}）`, response.status);
+      return data.data;
+    };
+  }
+
+  // Toasts sit at the bottom of the viewport so results are visible however far the page is scrolled.
+  let toastRoot = null;
+  function toast(message, kind = 'info', {action} = {}) {
+    if (!toastRoot) {
+      toastRoot = document.createElement('div');
+      toastRoot.id = 'ab-toasts';
+      document.body.append(toastRoot);
+    }
+    toastRoot.replaceChildren();
+    const box = document.createElement('div');
+    box.className = 'toast ' + kind;
+    box.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    const text = document.createElement('span');
+    text.textContent = message;
+    box.append(text);
+    if (action) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = action.label;
+      b.onclick = () => { box.remove(); action.run(); };
+      box.append(b);
+    }
+    const close = document.createElement('button');
+    close.type = 'button'; close.textContent = '关闭'; close.setAttribute('aria-label', '关闭提示');
+    close.onclick = () => box.remove();
+    box.append(close);
+    toastRoot.append(box);
+    if (kind === 'ok') setTimeout(() => box.remove(), 5000);
+  }
+  const ok = message => toast(message, 'ok');
+  function error(err, reload) {
+    const message = err?.message || String(err);
+    toast(message, 'error', err?.status === 409 && reload ? {action: {label: '重新读取', run: reload}} : undefined);
+  }
+
+  // One action at a time. Buttons are disabled while it runs; form fields stay usable so focus is never lost.
+  function runner({onError} = {}) {
+    let busy = false;
+    const run = async fn => {
+      if (busy) return false;
+      busy = true;
+      document.body.setAttribute('aria-busy', 'true');
+      const buttons = [...document.querySelectorAll('button:not([data-free])')].filter(b => !b.disabled);
+      buttons.forEach(b => { b.disabled = true; });
+      try { await fn(); return true; }
+      catch (err) { (onError || error)(err); return false; }
+      finally {
+        busy = false;
+        document.body.removeAttribute('aria-busy');
+        buttons.forEach(b => { b.disabled = false; });
+      }
+    };
+    run.busy = () => busy;
+    return run;
+  }
+
+  // Poll while the tab is visible, never overlapping requests.
+  function poll(fn, ms) {
+    let inFlight = false;
+    const tick = async () => {
+      if (inFlight || document.hidden) return;
+      inFlight = true;
+      try { await fn(); } finally { inFlight = false; }
+    };
+    setInterval(tick, ms);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+    tick();
+    return tick;
+  }
+
+  // Rebuild a <select> only when its options really changed, so an open dropdown is not closed by polling.
+  function setOptions(select, items, fallback = '') {
+    const signature = JSON.stringify(items.map(i => [i.value, i.label]));
+    if (select.dataset.signature !== signature) {
+      const old = select.value;
+      select.replaceChildren(...items.map(i => new Option(i.label, i.value)));
+      select.dataset.signature = signature;
+      select.value = items.some(i => i.value === old) ? old : fallback;
+    }
+    return select.value;
+  }
+
+  // Update table cells in place (text selection and scroll survive refreshes). Rows are arrays of text,
+  // or {empty: text} for a single full-width message row. `labels` feed the narrow-screen card layout.
+  function setRows(tbody, rows, {labels = [], wrap = []} = {}) {
+    rows.forEach((row, index) => {
+      let tr = tbody.rows[index];
+      const cells = row.empty !== undefined ? [row.empty] : row;
+      if (!tr || tr.cells.length !== cells.length) {
+        const fresh = document.createElement('tr');
+        cells.forEach((_, i) => {
+          const td = document.createElement('td');
+          if (row.empty !== undefined) td.colSpan = labels.length || 1;
+          else { if (labels[i]) td.dataset.label = labels[i]; if (wrap.includes(i)) td.className = 'wrap'; }
+          fresh.append(td);
+        });
+        tr ? tr.replaceWith(fresh) : tbody.append(fresh);
+        tr = fresh;
+      }
+      cells.forEach((value, i) => {
+        const text = value ?? '—';
+        const td = tr.cells[i];
+        if (td.textContent !== String(text)) td.textContent = text;
+      });
+    });
+    while (tbody.rows.length > rows.length) tbody.deleteRow(-1);
+  }
+
+  // Assign text only when it changed, so periodic refreshes do not reset the user's text selection.
+  function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
+
+  const pad = n => String(n).padStart(2, '0');
+  function duration(seconds) {
+    const n = Math.max(0, Math.ceil(seconds));
+    if (!n) return '已到期';
+    const h = Math.floor(n / 3600), m = Math.floor(n % 3600 / 60), s = n % 60;
+    return (h ? h + '时' : '') + (h || m ? m + '分' : '') + s + '秒';
+  }
+  const stamp = seconds => seconds ? new Date(seconds * 1000).toLocaleString() : '—';
+
+  // Unsaved-change tracking: marks the flag element, warns before leaving or replacing the form.
+  function dirtyTracker(flag) {
+    let dirty = false;
+    const show = () => {
+      if (!flag) return;
+      flag.dataset.dirty = String(dirty);
+      flag.textContent = dirty ? '有未保存的修改' : '已与服务器同步';
+    };
+    window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+    show();
+    return {
+      get dirty() { return dirty; },
+      mark() { if (!dirty) { dirty = true; show(); } },
+      clear() { dirty = false; show(); },
+      watch(root) { root.addEventListener('input', () => this.mark()); root.addEventListener('change', () => this.mark()); },
+      confirmDiscard(message = '有未保存的修改，继续将丢失这些修改。确定继续吗？') { return !dirty || confirm(message); },
+    };
+  }
+
+  return {$, ApiError, request, napcat, toast, ok, error, runner, poll, setOptions, setRows, setText, duration, stamp, pad, dirtyTracker};
+})();
+</script>
 <script>
 'use strict';
-const $=id=>document.getElementById(id);let state=null,busy=false;
-const keys=['utc_offset','idle_hours','cooldown_hours','daily_limit','global_daily_limit'];
-function notice(text,error=false){$('notice').textContent=text;$('notice').classList.toggle('error',error);}
-async function api(body){const token=localStorage.getItem('token');if(!token)throw Error('请先返回 NapCat 登录，再重新打开本页面。');
- const r=await fetch('/api/Plugin/ext/napcat-plugin-anima-peer-manager/proactive/config',{method:body?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:body?JSON.stringify(body):undefined,cache:'no-store'});
- const data=await r.json();if(!r.ok||data.code!==0)throw Error(data.code===-1||r.status===401?'登录已过期，请返回 NapCat 重新登录。':data.message||'操作失败');return data.data;}
-const format=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
-function minutes(s){if(!/^(?:[01]\d|2[0-3]):[0-5]\d$|^24:00$/.test(s))throw Error('时间格式应为 HH:MM，例如 08:00。');const [h,m]=s.split(':').map(Number);return h*60+m;}
-function row(start=480,end=600){const box=document.createElement('div');box.className='window';for(const [n,label] of [[start,'开始时间'],[end,'结束时间']]){const input=document.createElement('input');input.value=format(n);input.placeholder='HH:MM';input.required=true;input.setAttribute('aria-label',label);box.append(input);}const remove=document.createElement('button');remove.type='button';remove.textContent='移除';remove.onclick=()=>{if(busy)return;box.remove();};box.append(remove);$('windows').append(box);}
-function render(){keys.forEach(k=>$(k).value=state[k]);$('enabled').checked=state.enabled;$('windows').replaceChildren();state.windows.forEach(w=>row(...w));}
-async function run(fn){if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){notice(e.message,true);}finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);$('save').disabled=!state;}}
-$('add').onclick=()=>{if($('windows').children.length>=8)return notice('最多8个时间段。',true);row();};
-$('reload').onclick=()=>run(async()=>{state=await api();render();notice('已读取服务器设置。');});
-$('form').onsubmit=e=>{e.preventDefault();run(async()=>{if(!state)throw Error('请先读取配置');const body={...state,enabled:$('enabled').checked,windows:[...$('windows').children].map(r=>[...r.querySelectorAll('input')].map(i=>minutes(i.value.trim())))};keys.forEach(k=>body[k]=Number($(k).value));state=await api(body);render();notice('已保存。后台将在下一次检查（5分钟内）采用新设置，无需重启。');});};
-run(async()=>{state=await api();render();notice('已读取服务器设置。');});
-</script><script>
-let proactiveLive=null,proactiveAt=0,proactiveLoading=false,proactiveError='';
-const proactiveNow=()=>proactiveLive.server_time+(performance.now()-proactiveAt)/1000;
-function countdown(t){if(!t||t<=proactiveNow())return '无冷却';const n=Math.ceil(t-proactiveNow());return Math.floor(n/3600)+'时'+Math.floor(n%3600/60)+'分'+n%60+'秒';}
-function renderStatus(){if(!proactiveLive)return;const d=proactiveLive;$('status-note').textContent=(proactiveError?proactiveError+'\n':'')+'全局今日：已用 '+d.used+' / 剩余 '+d.remaining+' / 上限 '+d.limit+' · 配额日期 '+d.quota_day+'（UTC'+(d.utc_offset>=0?'+':'')+d.utc_offset+'）\n'+d.note+'\n读取时间：'+new Date(d.server_time*1000).toLocaleString();$('status-note').classList.toggle('error',!!proactiveError);$('status-rows').replaceChildren();for(const r of d.sessions){const tr=document.createElement('tr');for(const [i,text] of [r.bot_id+' / '+r.user_id,r.used+' / '+r.remaining+' / '+r.limit,countdown(r.cooldown_until),r.expected_at?new Date(r.expected_at*1000).toLocaleString():'暂不安排 / 等待条件满足',r.reasons.join('；'),r.last_result].entries()){const td=document.createElement('td');td.textContent=text;if(i===4)td.className='reason';tr.append(td);}$('status-rows').append(tr);}if(!d.sessions.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=6;td.textContent='暂无私聊会话；用户正常私聊后才会建立计划。';tr.append(td);$('status-rows').append(tr);}}
-async function refreshStatus(){if(proactiveLoading||document.hidden)return;proactiveLoading=true;try{const token=localStorage.getItem('token');if(!token)throw Error('请先登录 NapCat');const r=await fetch('/api/Plugin/ext/napcat-plugin-anima-peer-manager/proactive/status',{headers:{Authorization:'Bearer '+token},cache:'no-store'});const d=await r.json();if(!r.ok||d.code!==0)throw Error(d.message||'状态暂不可用');proactiveLive=d.data;proactiveAt=performance.now();proactiveError='';renderStatus();}catch(e){proactiveError=e.message;if(proactiveLive)renderStatus();else{$('status-note').textContent=e.message;$('status-note').classList.add('error');}}finally{proactiveLoading=false;}}
-$('status-refresh').onclick=refreshStatus;setInterval(refreshStatus,5000);setInterval(()=>{if(proactiveLive&&!document.hidden)renderStatus();},1000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshStatus();});refreshStatus();
-</script></html>
+const {$, napcat, ok, error, runner, poll, setRows, setText, duration, stamp, pad, dirtyTracker} = AB;
+const api = napcat('/api/Plugin/ext/napcat-plugin-anima-peer-manager/proactive/');
+const keys = ['utc_offset','idle_hours','cooldown_hours','daily_limit','global_daily_limit'];
+const dirty = dirtyTracker($('dirty'));
+const run = runner({onError: err => error(err, reload)});
+let state = null;
+
+const format = n => pad(Math.floor(n / 60)) + ':' + pad(n % 60);
+function minutes(text, label) {
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$|^24:00$/.test(text)) throw new Error(label + '的格式应为 HH:MM，例如 08:00。');
+  const [h, m] = text.split(':').map(Number);
+  return h * 60 + m;
+}
+function renumber() {
+  [...$('windows').children].forEach((box, i) => { box.querySelector('legend').textContent = '时间段 ' + (i + 1); });
+}
+function addWindow(start = 480, end = 600) {
+  const box = document.createElement('fieldset');
+  box.className = 'window';
+  box.append(document.createElement('legend'));
+  for (const [value, name] of [[start, '开始'], [end, '结束']]) {
+    const label = document.createElement('label'), input = document.createElement('input');
+    label.textContent = name;
+    Object.assign(input, {value: format(value), placeholder: 'HH:MM', required: true, inputMode: 'numeric',
+      pattern: '(?:[01]\\d|2[0-3]):[0-5]\\d|24:00'});
+    input.dataset.name = name;
+    label.append(input);
+    box.append(label);
+  }
+  const remove = document.createElement('button');
+  remove.type = 'button'; remove.textContent = '移除';
+  remove.onclick = () => { box.remove(); renumber(); dirty.mark(); };
+  box.append(remove);
+  $('windows').append(box);
+  renumber();
+}
+function render() {
+  keys.forEach(k => { $(k).value = state[k]; });
+  $('enabled').checked = state.enabled;
+  $('windows').replaceChildren();
+  state.windows.forEach(w => addWindow(...w));
+  $('save').disabled = false;
+  dirty.clear();
+}
+async function load(message) { state = await api('config'); render(); if (message) ok(message); }
+function reload() {
+  if (!dirty.confirmDiscard('重新读取会丢弃尚未保存的修改。确定继续吗？')) return;
+  run(() => load('已读取服务器设置。'));
+}
+
+dirty.watch($('form'));
+$('add').onclick = () => {
+  if ($('windows').children.length >= 8) return error(new Error('最多8个时间段。'));
+  addWindow(); dirty.mark();
+  $('windows').lastElementChild.querySelector('input').focus();
+};
+$('reload').onclick = reload;
+$('form').onsubmit = e => {
+  e.preventDefault();
+  run(async () => {
+    if (!state) throw new Error('请先读取配置');
+    const windows = [...$('windows').children].map((box, i) =>
+      [...box.querySelectorAll('input')].map(input => minutes(input.value.trim(), `时间段 ${i + 1} 的${input.dataset.name}时间`)));
+    const body = {...state, enabled: $('enabled').checked, windows};
+    keys.forEach(k => { body[k] = Number($(k).value); });
+    state = await api('config', body);
+    render();
+    ok('已保存。后台将在下一次检查（5分钟内）采用新设置，无需重启。');
+  });
+};
+run(() => load());
+
+// Live status: fetched every 5s, countdowns ticked locally every second without rebuilding the table.
+let live = null, liveAt = 0, liveError = '';
+const serverNow = () => live.server_time + (performance.now() - liveAt) / 1000;
+const cooldown = t => !t || t <= serverNow() ? '无冷却' : duration(t - serverNow());
+const statusLabels = ['Bot / 用户QQ','今日已用 / 剩余 / 上限','冷却剩余','下次最早预计时间','当前未主动搭话原因','最近尝试结果'];
+function renderStatus() {
+  if (!live) return;
+  const d = live;
+  setText($('status-note'), '全局今日：已用 ' + d.used + ' / 剩余 ' + d.remaining + ' / 上限 ' + d.limit +
+    ' · 配额日期 ' + d.quota_day + '（UTC' + (d.utc_offset >= 0 ? '+' : '') + d.utc_offset + '）\n' + d.note +
+    '\n读取时间：' + stamp(d.server_time) + (liveError ? '\n' + liveError : ''));
+  $('status-badge').classList.toggle('hidden', !liveError);
+  setRows($('status-rows'), d.sessions.length ? d.sessions.map(r => [
+    r.bot_id + ' / ' + r.user_id, r.used + ' / ' + r.remaining + ' / ' + r.limit, cooldown(r.cooldown_until),
+    r.expected_at ? stamp(r.expected_at) : '暂不安排 / 等待条件满足', r.reasons.join('；'), r.last_result,
+  ]) : [{empty: '暂无私聊会话；用户正常私聊后才会建立计划。'}], {labels: statusLabels, wrap: [4]});
+}
+async function refreshStatus() {
+  try {
+    live = await api('status'); liveAt = performance.now(); liveError = '';
+  } catch (err) {
+    liveError = err.message;
+    if (!live) { $('status-note').textContent = err.message; $('status-note').classList.add('error-text'); return; }
+  }
+  $('status-note').classList.remove('error-text');
+  renderStatus();
+}
+const tick = poll(refreshStatus, 5000);
+$('status-refresh').onclick = tick;
+setInterval(() => { if (live && !document.hidden) renderStatus(); }, 1000);
+</script></body></html>

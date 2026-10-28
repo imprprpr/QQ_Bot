@@ -1,26 +1,443 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AnimaBot 人设与用户分配</title>
-<style>:root{color-scheme:dark;font-family:system-ui,sans-serif;color:#ececf2;background:#14151b}*{box-sizing:border-box}body{max-width:1100px;margin:auto;padding:28px}h1{font-size:25px}p,small{color:#b7bbcb;line-height:1.7}a{color:#adbbff}.panel{background:#1e2029;border:1px solid #353846;border-radius:16px;padding:22px;margin:20px 0}.layout{display:grid;grid-template-columns:1.4fr 1fr;gap:22px}label{display:block;margin:15px 0 7px}input,textarea,select{width:100%;padding:10px;border:1px solid #484c60;border-radius:8px;background:#151720;color:inherit;font:inherit}textarea{resize:vertical;min-height:90px}button{font:inherit;cursor:pointer;color:inherit;background:#354369;border:1px solid #6474ae;border-radius:8px;padding:10px 14px;margin:10px 8px 0 0}button:disabled{opacity:.5;cursor:wait}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:10px;border-bottom:1px solid #393c49;text-align:left;white-space:nowrap}.notice{white-space:pre-wrap;line-height:1.7;color:#c0d0ff}.error{color:#ffb6c2}@media(max-width:750px){body{padding:16px}.layout{grid-template-columns:1fr}}</style>
-<h1>人设与用户分配</h1><p>保存自己的角色预设，下次直接选择。<a href="/webui/" target="_top">返回 NapCat / 登录</a></p><p id="notice" class="notice" role="status">正在读取…</p>
-<div class="layout"><section class="panel"><h2>人设库</h2><label for="choose">选择已有人设</label><select id="choose"></select><button id="new" type="button">新建空白预设</button><button id="copy" type="button">复制为新人设</button><p>已有内置角色会另存为个人预设，不改源码。填写有效名称和描述/性格后，停止输入约1秒自动保存；也可立即保存。</p><form id="editor"><h3>聊天偏好</h3><div id="style-options">
-<label for="teasing">调侃程度</label><select id="teasing"><option value="0">不调侃</option><option value="1">轻轻接梗（默认）</option><option value="2">活泼斗嘴</option><option value="3">更爱逗人</option></select>
-<label for="refusal">拒答倾向</label><select id="refusal"><option value="0">尽量回应</option><option value="1">看情境选择（默认）</option><option value="2">更有主见</option></select>
-<label for="punctuation">标点风格</label><select id="punctuation"><option value="natural">自然短信（默认）</option><option value="standard">常规标点</option><option value="minimal">更少句尾标点</option></select>
-<p>每个人设独立保存，修改后下次回复及主动搭话生效。这是表达偏好，不是随机拒答概率；认真求助会收住玩笑，代码和网址保留必要标点。内置模板会另存为新预设，需将该预设分配给QQ用户才会使用。</p></div><div id="fields"></div><label for="base">继承外观/世界书的基础角色</label><select id="base"></select><button id="save" type="submit">立即保存人设</button></form><p id="save-state" class="notice"></p></section>
-<section class="panel"><h2>按 QQ 分配人设</h2><label for="target">使用人设</label><select id="target"></select><label for="bot">适用 Bot 账号</label><input id="bot" list="bots" value="*" placeholder="* 表示所有Bot，或填Bot QQ号"><datalist id="bots"></datalist><label for="users">QQ用户号（可批量，每行一个）</label><textarea id="users" placeholder="123456789"></textarea><button id="assign" type="button">保存用户分配</button><p>只改变指定用户后续的私聊和群聊回应，不发测试消息。管理员分配优先于该用户的 /switch；解除后恢复分配前各会话的角色。不同人设的历史和记忆分别保留，切回可恢复。主动聊天使用同一人设。</p><h3>已保存的分配</h3><div class="scroll"><table><thead><tr><th>Bot</th><th>用户QQ</th><th>人设</th><th>操作</th></tr></thead><tbody id="bindings"></tbody></table></div></section></div>
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AnimaBot 人设与用户分配</title>
+<style data-shared="base.css">
+/* AnimaBot shared admin styles. Edit here, then run `node build-ui.mjs` to inline into every page. */
+:root{
+  color-scheme:light;
+  --bg:#f5f6fa;--surface:#ffffff;--field:#ffffff;--line:#e2e6ee;--line-strong:#c3c9d6;
+  --ink:#243044;--muted:#5b6578;--accent:#3f51c4;--accent-hover:#3442b0;--on-accent:#ffffff;
+  --link:#3442b0;--button:#e9ecf7;--button-hover:#dde2f3;--danger:#b4233a;--ok:#1d7a52;
+  --focus:#3f51c4;--toast:#243044;--on-toast:#ffffff;
+  --radius:12px;--gap:20px;--page:1120px;
+  font:15px/1.6 system-ui,"Microsoft YaHei","PingFang SC",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;
+  --bg:#14151b;--surface:#1e2029;--field:#171922;--line:#353846;--line-strong:#4a4e63;
+  --ink:#ececf2;--muted:#b5b8c9;--accent:#3f55c4;--accent-hover:#4a61d4;--on-accent:#ffffff;
+  --link:#aebdff;--button:#2c3142;--button-hover:#363c52;--danger:#ffb6c2;--ok:#8de5be;
+  --focus:#8fa2ff;--toast:#ececf2;--on-toast:#14151b;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink)}
+main{max-width:var(--page);margin:auto;padding:28px 24px 96px}
+h1{font-size:26px;margin:0 0 6px}h2{font-size:18px;margin:0 0 12px}h3{font-size:16px;margin:22px 0 6px}
+p,small,.muted{color:var(--muted)}small{display:block;line-height:1.55;margin-top:4px}
+a{color:var(--link)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin:var(--gap) 0}
+label{display:block;margin:14px 0 6px}
+label.check{display:flex;gap:10px;align-items:center}
+input,textarea,select{font:inherit;color:inherit;background:var(--field);border:1px solid var(--line-strong);border-radius:8px;padding:9px 11px;width:100%;max-width:100%}
+input[type=checkbox]{width:20px;height:20px;padding:0;flex:none;accent-color:var(--accent)}
+textarea{min-height:96px;resize:vertical}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+button{font:inherit;cursor:pointer;color:var(--ink);background:var(--button);border:1px solid var(--line-strong);border-radius:8px;padding:9px 15px}
+button:hover{background:var(--button-hover)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+button.primary:hover{background:var(--accent-hover)}
+button.danger{color:var(--danger)}
+button[aria-pressed="true"],button[aria-current="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+button:disabled{opacity:.55;cursor:not-allowed}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px}
+.actions.sticky{position:sticky;bottom:0;z-index:2;background:var(--bg);margin:0 -24px;padding:12px 24px;border-top:1px solid var(--line)}
+.dirty-flag{color:var(--muted);font-size:13px}
+.dirty-flag[data-dirty="true"]{color:var(--danger)}
+.scroll{overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+td.wrap{white-space:normal;min-width:220px;overflow-wrap:anywhere}
+details.help{margin-top:12px;color:var(--muted)}details.help summary{cursor:pointer;color:var(--ink)}
+.badge{display:inline-block;border:1px solid var(--line-strong);border-radius:999px;padding:2px 10px;font-size:12px}
+.badge.stale{color:var(--danger);border-color:currentColor}
+.error-text{color:var(--danger)}
+.hidden{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#ab-toasts{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:10;display:flex;flex-direction:column;gap:8px;width:min(560px,calc(100% - 32px));pointer-events:none}
+.toast{pointer-events:auto;display:flex;gap:12px;align-items:flex-start;background:var(--toast);color:var(--on-toast);border-radius:10px;padding:11px 14px;box-shadow:0 6px 24px rgba(0,0,0,.25);white-space:pre-wrap}
+.toast.error{border-left:5px solid #e0455f}.toast.ok{border-left:5px solid #2fa36d}
+.toast span{flex:1}
+.toast button{background:transparent;color:inherit;border-color:currentColor;padding:3px 10px;font-size:13px}
+@media (max-width:720px){
+  main{padding:16px 16px 96px}.panel{padding:16px}.grid{grid-template-columns:1fr}
+  .actions.sticky{margin:0 -16px;padding:10px 16px}
+  table.stack thead{display:none}
+  table.stack tr{display:block;border:1px solid var(--line);border-radius:10px;margin:0 0 10px;padding:6px 10px}
+  table.stack td{display:flex;gap:12px;border:0;padding:4px 0}
+  table.stack td::before{content:attr(data-label);color:var(--muted);flex:0 0 38%}
+  table.stack td.wrap{min-width:0}
+  table.stack td[colspan]::before{content:none}
+}
+</style>
+<style>
+.layout{display:grid;grid-template-columns:1.4fr 1fr;gap:var(--gap);align-items:start}
+.layout .panel{margin:0}
+#save-state{margin:8px 0 0}
+@media (max-width:860px){.layout{grid-template-columns:1fr}}
+</style></head><body><main>
+<header><h1>人设与用户分配</h1><p>保存自己的角色预设，下次直接选择。<a href="/webui/" target="_top">返回 NapCat / 登录</a></p></header>
+<div class="layout">
+<section class="panel" aria-labelledby="library-title">
+  <h2 id="library-title">人设库</h2>
+  <label for="choose">选择已有人设</label><select id="choose"></select>
+  <div class="actions"><button id="new" type="button">新建空白预设</button><button id="copy" type="button">复制为新人设</button></div>
+  <details class="help"><summary>保存方式</summary><p>已有内置角色会另存为个人预设，不改源码。填写有效名称和描述/性格后，停止输入约1秒自动保存；也可立即保存。</p></details>
+  <form id="editor">
+    <h3>聊天偏好</h3>
+    <div class="grid">
+      <div><label for="teasing">调侃程度</label><select id="teasing"><option value="0">不调侃</option><option value="1">轻轻接梗（默认）</option><option value="2">活泼斗嘴</option><option value="3">更爱逗人</option></select></div>
+      <div><label for="refusal">拒答倾向</label><select id="refusal"><option value="0">尽量回应</option><option value="1">看情境选择（默认）</option><option value="2">更有主见</option></select></div>
+      <div><label for="punctuation">标点风格</label><select id="punctuation"><option value="natural">自然短信（默认）</option><option value="standard">常规标点</option><option value="minimal">更少句尾标点</option></select></div>
+    </div>
+    <details class="help"><summary>偏好如何生效</summary><p>每个人设独立保存，修改后下次回复及主动搭话生效。这是表达偏好，不是随机拒答概率；认真求助会收住玩笑，代码和网址保留必要标点。内置模板会另存为新预设，需将该预设分配给QQ用户才会使用。</p></details>
+    <div id="fields"></div>
+    <label for="base">继承外观/世界书的基础角色</label><select id="base"></select>
+    <div class="actions"><button id="save" class="primary" type="submit">立即保存人设</button><span id="save-state" class="dirty-flag" aria-live="polite"></span></div>
+  </form>
+</section>
+<section class="panel" aria-labelledby="assign-title">
+  <h2 id="assign-title">按 QQ 分配人设</h2>
+  <label for="target">使用人设</label><select id="target"></select>
+  <small>只列出已保存的人设和内置角色；正在编辑的新预设需先保存。</small>
+  <label for="bot">适用 Bot 账号</label><input id="bot" list="bots" value="*" placeholder="* 表示所有Bot，或填Bot QQ号"><datalist id="bots"></datalist>
+  <label for="users">QQ用户号（可批量，每行一个）</label><textarea id="users" placeholder="123456789"></textarea>
+  <div class="actions"><button id="assign" class="primary" type="button">保存用户分配</button></div>
+  <details class="help"><summary>分配规则</summary><p>只改变指定用户后续的私聊和群聊回应，不发测试消息。管理员分配优先于该用户的 /switch；解除后恢复分配前各会话的角色。不同人设的历史和记忆分别保留，切回可恢复。主动聊天使用同一人设。</p></details>
+  <h3>已保存的分配</h3>
+  <div class="scroll"><table class="stack"><thead><tr><th>Bot</th><th>用户QQ</th><th>人设</th><th>操作</th></tr></thead><tbody id="bindings"></tbody></table></div>
+</section>
+</div>
+</main>
+<script data-shared="base.js">
+// AnimaBot shared admin helpers. Edit here, then run `node build-ui.mjs` to inline into every page.
+'use strict';
+window.AB = (() => {
+  const $ = id => document.getElementById(id);
+
+  class ApiError extends Error {
+    constructor(message, status = 0) { super(message); this.status = status; }
+  }
+
+  // fetch + JSON with readable Chinese errors for network failures, HTML error pages and expired logins.
+  async function request(url, {method, body, headers = {}} = {}) {
+    let response;
+    try {
+      response = await fetch(url, {method: method || (body === undefined ? 'GET' : 'POST'), cache: 'no-store',
+        headers: {'Content-Type': 'application/json', ...headers}, body: body === undefined ? undefined : JSON.stringify(body)});
+    } catch {
+      throw new ApiError('无法连接服务器，请确认服务正在运行、网络正常后重试。');
+    }
+    const text = await response.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { /* non-JSON, e.g. a proxy error page */ }
+    return {response, data};
+  }
+
+  // Client for this plugin's NapCat routes; the NapCat WebUI keeps its login token in localStorage.
+  function napcat(base) {
+    return async (path, body) => {
+      let token = null;
+      try { token = localStorage.getItem('token'); } catch { /* storage blocked */ }
+      if (!token) throw new ApiError('请先返回 NapCat 登录，再重新打开本页面。', 401);
+      const {response, data} = await request(base + path, {body, headers: {Authorization: 'Bearer ' + token}});
+      if (response.status === 401 || data?.code === -1) throw new ApiError('登录已过期，请点击上方链接重新登录 NapCat，再从扩展页面进入。', 401);
+      if (!data) throw new ApiError(`服务器返回了无法识别的内容（HTTP ${response.status}），请刷新页面；若持续出现请查看 NapCat 日志。`, response.status);
+      if (!response.ok || data.code !== 0) throw new ApiError(data.message || `操作失败（HTTP ${response.status}）`, response.status);
+      return data.data;
+    };
+  }
+
+  // Toasts sit at the bottom of the viewport so results are visible however far the page is scrolled.
+  let toastRoot = null;
+  function toast(message, kind = 'info', {action} = {}) {
+    if (!toastRoot) {
+      toastRoot = document.createElement('div');
+      toastRoot.id = 'ab-toasts';
+      document.body.append(toastRoot);
+    }
+    toastRoot.replaceChildren();
+    const box = document.createElement('div');
+    box.className = 'toast ' + kind;
+    box.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    const text = document.createElement('span');
+    text.textContent = message;
+    box.append(text);
+    if (action) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = action.label;
+      b.onclick = () => { box.remove(); action.run(); };
+      box.append(b);
+    }
+    const close = document.createElement('button');
+    close.type = 'button'; close.textContent = '关闭'; close.setAttribute('aria-label', '关闭提示');
+    close.onclick = () => box.remove();
+    box.append(close);
+    toastRoot.append(box);
+    if (kind === 'ok') setTimeout(() => box.remove(), 5000);
+  }
+  const ok = message => toast(message, 'ok');
+  function error(err, reload) {
+    const message = err?.message || String(err);
+    toast(message, 'error', err?.status === 409 && reload ? {action: {label: '重新读取', run: reload}} : undefined);
+  }
+
+  // One action at a time. Buttons are disabled while it runs; form fields stay usable so focus is never lost.
+  function runner({onError} = {}) {
+    let busy = false;
+    const run = async fn => {
+      if (busy) return false;
+      busy = true;
+      document.body.setAttribute('aria-busy', 'true');
+      const buttons = [...document.querySelectorAll('button:not([data-free])')].filter(b => !b.disabled);
+      buttons.forEach(b => { b.disabled = true; });
+      try { await fn(); return true; }
+      catch (err) { (onError || error)(err); return false; }
+      finally {
+        busy = false;
+        document.body.removeAttribute('aria-busy');
+        buttons.forEach(b => { b.disabled = false; });
+      }
+    };
+    run.busy = () => busy;
+    return run;
+  }
+
+  // Poll while the tab is visible, never overlapping requests.
+  function poll(fn, ms) {
+    let inFlight = false;
+    const tick = async () => {
+      if (inFlight || document.hidden) return;
+      inFlight = true;
+      try { await fn(); } finally { inFlight = false; }
+    };
+    setInterval(tick, ms);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+    tick();
+    return tick;
+  }
+
+  // Rebuild a <select> only when its options really changed, so an open dropdown is not closed by polling.
+  function setOptions(select, items, fallback = '') {
+    const signature = JSON.stringify(items.map(i => [i.value, i.label]));
+    if (select.dataset.signature !== signature) {
+      const old = select.value;
+      select.replaceChildren(...items.map(i => new Option(i.label, i.value)));
+      select.dataset.signature = signature;
+      select.value = items.some(i => i.value === old) ? old : fallback;
+    }
+    return select.value;
+  }
+
+  // Update table cells in place (text selection and scroll survive refreshes). Rows are arrays of text,
+  // or {empty: text} for a single full-width message row. `labels` feed the narrow-screen card layout.
+  function setRows(tbody, rows, {labels = [], wrap = []} = {}) {
+    rows.forEach((row, index) => {
+      let tr = tbody.rows[index];
+      const cells = row.empty !== undefined ? [row.empty] : row;
+      if (!tr || tr.cells.length !== cells.length) {
+        const fresh = document.createElement('tr');
+        cells.forEach((_, i) => {
+          const td = document.createElement('td');
+          if (row.empty !== undefined) td.colSpan = labels.length || 1;
+          else { if (labels[i]) td.dataset.label = labels[i]; if (wrap.includes(i)) td.className = 'wrap'; }
+          fresh.append(td);
+        });
+        tr ? tr.replaceWith(fresh) : tbody.append(fresh);
+        tr = fresh;
+      }
+      cells.forEach((value, i) => {
+        const text = value ?? '—';
+        const td = tr.cells[i];
+        if (td.textContent !== String(text)) td.textContent = text;
+      });
+    });
+    while (tbody.rows.length > rows.length) tbody.deleteRow(-1);
+  }
+
+  // Assign text only when it changed, so periodic refreshes do not reset the user's text selection.
+  function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
+
+  const pad = n => String(n).padStart(2, '0');
+  function duration(seconds) {
+    const n = Math.max(0, Math.ceil(seconds));
+    if (!n) return '已到期';
+    const h = Math.floor(n / 3600), m = Math.floor(n % 3600 / 60), s = n % 60;
+    return (h ? h + '时' : '') + (h || m ? m + '分' : '') + s + '秒';
+  }
+  const stamp = seconds => seconds ? new Date(seconds * 1000).toLocaleString() : '—';
+
+  // Unsaved-change tracking: marks the flag element, warns before leaving or replacing the form.
+  function dirtyTracker(flag) {
+    let dirty = false;
+    const show = () => {
+      if (!flag) return;
+      flag.dataset.dirty = String(dirty);
+      flag.textContent = dirty ? '有未保存的修改' : '已与服务器同步';
+    };
+    window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+    show();
+    return {
+      get dirty() { return dirty; },
+      mark() { if (!dirty) { dirty = true; show(); } },
+      clear() { dirty = false; show(); },
+      watch(root) { root.addEventListener('input', () => this.mark()); root.addEventListener('change', () => this.mark()); },
+      confirmDiscard(message = '有未保存的修改，继续将丢失这些修改。确定继续吗？') { return !dirty || confirm(message); },
+    };
+  }
+
+  return {$, ApiError, request, napcat, toast, ok, error, runner, poll, setOptions, setRows, setText, duration, stamp, pad, dirtyTracker};
+})();
+</script>
 <script>
-'use strict';const $=id=>document.getElementById(id);const limits={name:80,description:6000,personality:6000,scenario:3000,first_mes:1000,mes_example:8000,system_prompt:6000};const labels={name:'人设名称',description:'身份与背景',personality:'性格、兴趣与说话习惯',scenario:'相处情境',first_mes:'初次见面台词（仅用于主动切换角色的开场）',mes_example:'对话示例',system_prompt:'补充人设指令（可选）'};
-let state={revision:'',profiles:[],bindings:[]},catalog={cards:[],bot_ids:[]},selected='',editing=null,dirty=false,timer=null,busy=false,editVersion=0;
-function note(text,error=false){$('notice').textContent=text;$('notice').classList.toggle('error',error);}
-async function api(action,body){const token=localStorage.getItem('token');if(!token)throw Error('请先登录 NapCat');const r=await fetch('/api/Plugin/ext/napcat-plugin-anima-peer-manager/personas/'+action,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,cache:'no-store'});const d=await r.json();if(!r.ok||d.code!==0)throw Error(d.message||'操作失败');return d.data;}
-function all(){return [...catalog.cards.map(c=>({...c,builtin:true})),...state.profiles];}
-function lists(){const choices=all();for(const id of ['choose','target']){const old=$(id).value;$(id).replaceChildren(...choices.map(c=>new Option((c.builtin?'内置 · ':'已保存 · ')+c.name,c.id)));if(choices.some(c=>c.id===old))$(id).value=old;}if(choices.some(c=>c.id===selected))$('choose').value=selected;const old=$('base').value;$('base').replaceChildren(new Option('不继承',''),...catalog.cards.map(c=>new Option(c.name,c.id)));if(catalog.cards.some(c=>c.id===old))$('base').value=old;$('bots').replaceChildren(...catalog.bot_ids.map(id=>new Option(id,id)));
-$('bindings').replaceChildren();for(const b of state.bindings){const tr=document.createElement('tr');for(const t of [b.bot_id,b.user_id,choices.find(c=>c.id===b.persona_id)?.name||b.persona_id]){const td=document.createElement('td');td.textContent=t;tr.append(td);}const td=document.createElement('td'),button=document.createElement('button');button.textContent='解除分配';button.type='button';button.onclick=()=>run(async()=>{await save();state=await api('unbind',{revision:state.revision,bot_id:b.bot_id,users:b.user_id});lists();note('已解除；后续请求恢复分配前角色，记忆保留。');});td.append(button);tr.append(td);$('bindings').append(tr);}}
-function edit(id){$('choose').value=id||'';const p=all().find(c=>c.id===id);selected=id||'';if(p)$('target').value=p.id;editing=p&&!p.builtin?p.id:null;const style={teasing:1,refusal:1,punctuation:'natural',...p?.reply_style};for(const k of ['teasing','refusal','punctuation'])$(k).value=style[k];for(const key of Object.keys(limits))$(key).value=p?.[key]||'';$('base').value=p?.base_card||(p?.builtin?p.id:catalog.cards[0]?.id||'');dirty=false;clearTimeout(timer);$('save-state').textContent=p?.builtin?'编辑内置角色后将另存为新预设。':p?'此预设已保存在云服务器。':'填写后将自动保存为新预设。';}
-async function save(){clearTimeout(timer);if(!dirty)return;const version=editVersion,oldSelected=selected,oldTarget=$('target').value;if(!$('name').value.trim()||!($('description').value.trim()||$('personality').value.trim())){ $('save-state').textContent='请填写名称及角色描述或性格；当前尚未保存。';throw Error('人设尚不完整，未保存。');}const body={revision:state.revision,id:editing,base_card:$('base').value,reply_style:{teasing:Number($('teasing').value),refusal:Number($('refusal').value),punctuation:$('punctuation').value}};for(const k of Object.keys(limits))body[k]=$(k).value;$('save-state').textContent='正在保存…';const d=await api('save',body);state=d;selected=d.saved_id;editing=selected;dirty=editVersion!==version;lists();$('choose').value=selected;if(!oldSelected||oldTarget===oldSelected)$('target').value=selected;$('save-state').textContent=dirty?'正在保存后续修改…':'已自动保存到云服务器，下次可从列表直接选择。';if(dirty)timer=setTimeout(()=>run(save),1200);}
-async function run(fn){if(busy)return;busy=true;document.querySelectorAll('button,select,#bot,#users').forEach(e=>e.disabled=true);try{await fn();}catch(e){note(e.message,true);}finally{busy=false;document.querySelectorAll('button,select,#bot,#users').forEach(e=>e.disabled=false);}}
-function changed(){editVersion++;dirty=true;clearTimeout(timer);$('save-state').textContent='有未保存修改…';if($('name').value.trim()&&($('description').value.trim()||$('personality').value.trim()))timer=setTimeout(()=>run(save),1200);}
-for(const [key,max] of Object.entries(limits)){const label=document.createElement('label');label.htmlFor=key;label.textContent=labels[key];const input=document.createElement(key==='name'?'input':'textarea');input.id=key;input.maxLength=max;input.oninput=changed;$('fields').append(label,input);}$('base').onchange=changed;for(const key of ['teasing','refusal','punctuation'])$(key).onchange=changed;
-$('choose').onchange=()=>{const next=$('choose').value;run(async()=>{try{await save();edit(next);lists();}catch(e){$('choose').value=selected;throw e;}});};$('new').onclick=()=>run(async()=>{await save();edit('');});$('copy').onclick=()=>run(async()=>{await save();editing=null;selected='';dirty=true;$('name').value+='（副本）';await save();});$('editor').onsubmit=e=>{e.preventDefault();run(save);};$('assign').onclick=()=>run(async()=>{await save();state=await api('assign',{revision:state.revision,bot_id:$('bot').value.trim(),users:$('users').value,persona_id:$('target').value});lists();note('用户分配已保存，后续请求自动使用指定人设，无需重启。');});
-window.addEventListener('beforeunload',e=>{if(dirty||busy){e.preventDefault();e.returnValue='';}});
-run(async()=>{state=await api('config');let offline=false;try{catalog=await api('catalog');}catch{offline=true;}lists();edit(state.profiles[0]?.id||catalog.cards[0]?.id||'');note(offline?'Bot角色目录暂不可用，仍可编辑已保存的人设。':'请选择或新建人设。内容自动保存，QQ分配需点击保存用户分配。',offline);});
-</script></html>
+'use strict';
+const {$, napcat, ok, error, runner, toast} = AB;
+const api = napcat('/api/Plugin/ext/napcat-plugin-anima-peer-manager/personas/');
+const limits = {name: 80, description: 6000, personality: 6000, scenario: 3000, first_mes: 1000, mes_example: 8000, system_prompt: 6000};
+const labels = {name: '人设名称', description: '身份与背景', personality: '性格、兴趣与说话习惯', scenario: '相处情境',
+  first_mes: '初次见面台词（仅用于主动切换角色的开场）', mes_example: '对话示例', system_prompt: '补充人设指令（可选）'};
+let state = {revision: '', profiles: [], bindings: []}, catalog = {cards: [], bot_ids: []};
+let selected = '', editing = null, dirty = false, timer = null, editVersion = 0;
+const run = runner({onError: err => error(err, reload)});
+
+const all = () => [...catalog.cards.map(c => ({...c, builtin: true})), ...state.profiles];
+const complete = () => $('name').value.trim() && ($('description').value.trim() || $('personality').value.trim());
+const saveState = text => { $('save-state').textContent = text; $('save-state').dataset.dirty = String(dirty); };
+
+function lists() {
+  const choices = all();
+  for (const id of ['choose', 'target']) {
+    const old = $(id).value;
+    $(id).replaceChildren(...choices.map(c => new Option((c.builtin ? '内置 · ' : '已保存 · ') + c.name, c.id)));
+    if (choices.some(c => c.id === old)) $(id).value = old;
+  }
+  if (choices.some(c => c.id === selected)) $('choose').value = selected;
+  const base = $('base').value;
+  $('base').replaceChildren(new Option('不继承', ''), ...catalog.cards.map(c => new Option(c.name, c.id)));
+  if (catalog.cards.some(c => c.id === base)) $('base').value = base;
+  $('bots').replaceChildren(...catalog.bot_ids.map(id => new Option(id, id)));
+  $('bindings').replaceChildren();
+  for (const b of state.bindings) {
+    const tr = document.createElement('tr');
+    const name = choices.find(c => c.id === b.persona_id)?.name || b.persona_id;
+    for (const [label, text] of [['Bot', b.bot_id], ['用户QQ', b.user_id], ['人设', name]]) {
+      const td = document.createElement('td'); td.dataset.label = label; td.textContent = text; tr.append(td);
+    }
+    const td = document.createElement('td'), button = document.createElement('button');
+    td.dataset.label = '操作';
+    button.type = 'button'; button.className = 'danger'; button.textContent = '解除分配';
+    button.onclick = () => {
+      if (!confirm(`解除 QQ ${b.user_id} 的人设「${name}」？后续请求将恢复分配前的角色，记忆保留。`)) return;
+      run(async () => {
+        state = await api('unbind', {revision: state.revision, bot_id: b.bot_id, users: b.user_id});
+        lists();
+        ok('已解除；后续请求恢复分配前角色，记忆保留。');
+      });
+    };
+    td.append(button); tr.append(td);
+    $('bindings').append(tr);
+  }
+  if (!state.bindings.length) {
+    const tr = document.createElement('tr'), td = document.createElement('td');
+    td.colSpan = 4; td.textContent = '尚无分配。'; tr.append(td); $('bindings').append(tr);
+  }
+}
+
+function edit(id) {
+  const p = all().find(c => c.id === id);
+  selected = id || ''; $('choose').value = selected;
+  editing = p && !p.builtin ? p.id : null;
+  const style = {teasing: 1, refusal: 1, punctuation: 'natural', ...p?.reply_style};
+  for (const k of ['teasing', 'refusal', 'punctuation']) $(k).value = style[k];
+  for (const key of Object.keys(limits)) $(key).value = p?.[key] || '';
+  $('base').value = p?.base_card || (p?.builtin ? p.id : catalog.cards[0]?.id || '');
+  dirty = false; clearTimeout(timer);
+  saveState(p?.builtin ? '编辑内置角色后将另存为新预设。' : p ? '此预设已保存。' : '填写名称和描述/性格后自动保存为新预设。');
+}
+
+// Saves the draft. Explicit saves report problems; autosave just waits for a complete draft.
+async function save({explicit = false} = {}) {
+  clearTimeout(timer);
+  if (!dirty) { if (explicit) ok('没有需要保存的修改。'); return; }
+  if (!complete()) {
+    saveState('请填写名称及角色描述或性格；当前尚未保存。');
+    if (explicit) throw new Error('人设尚不完整：请填写名称，以及身份背景或性格中的至少一项。');
+    return;
+  }
+  const version = editVersion;
+  const body = {revision: state.revision, id: editing, base_card: $('base').value,
+    reply_style: {teasing: Number($('teasing').value), refusal: Number($('refusal').value), punctuation: $('punctuation').value}};
+  for (const k of Object.keys(limits)) body[k] = $(k).value;
+  saveState('正在保存…');
+  const d = await api('save', body);
+  state = d; selected = d.saved_id; editing = selected;
+  dirty = editVersion !== version;
+  lists(); $('choose').value = selected;
+  if (dirty) { saveState('正在保存后续修改…'); schedule(); }
+  else saveState('已保存，下次可从列表直接选择。');
+  if (explicit) ok('人设已保存。');
+}
+// Autosave never gets dropped: if another action is running it simply tries again shortly.
+function schedule(delay = 1200) {
+  clearTimeout(timer);
+  timer = setTimeout(() => { if (run.busy()) schedule(600); else run(() => save()); }, delay);
+}
+function changed() { editVersion++; dirty = true; saveState('有未保存修改…'); if (complete()) schedule(); }
+
+// Leaving the current draft: save it when possible, otherwise ask before discarding.
+async function leaveDraft() {
+  if (!dirty) return true;
+  if (complete()) { await save(); return true; }
+  return confirm('当前人设尚不完整，无法保存。放弃这些修改吗？');
+}
+async function reloadData() {
+  state = await api('config');
+  let offline = false;
+  try { catalog = await api('catalog'); } catch { offline = true; }
+  lists();
+  return offline;
+}
+function reload() {
+  if (dirty && !confirm('重新读取会丢弃尚未保存的人设修改。确定继续吗？')) return;
+  run(async () => { await reloadData(); edit(selected); ok('已重新读取。'); });
+}
+
+for (const [key, max] of Object.entries(limits)) {
+  const label = document.createElement('label'), input = document.createElement(key === 'name' ? 'input' : 'textarea');
+  label.htmlFor = key; label.textContent = labels[key];
+  input.id = key; input.maxLength = max; input.oninput = changed;
+  $('fields').append(label, input);
+}
+$('base').onchange = changed;
+for (const key of ['teasing', 'refusal', 'punctuation']) $(key).onchange = changed;
+
+$('choose').onchange = () => {
+  const next = $('choose').value;
+  $('choose').value = selected;
+  run(async () => { if (await leaveDraft()) { edit(next); lists(); } });
+};
+$('new').onclick = () => run(async () => { if (await leaveDraft()) edit(''); });
+$('copy').onclick = () => run(async () => {
+  if (!(await leaveDraft())) return;
+  editing = null; selected = ''; dirty = true; editVersion++;
+  $('name').value = ($('name').value + '（副本）').slice(0, limits.name);
+  await save({explicit: true});
+});
+$('editor').onsubmit = e => { e.preventDefault(); run(() => save({explicit: true})); };
+// Assignment is independent of the draft editor; an unfinished draft never blocks it.
+$('assign').onclick = () => run(async () => {
+  if (!$('users').value.trim()) throw new Error('请输入至少一个QQ号。');
+  state = await api('assign', {revision: state.revision, bot_id: $('bot').value.trim(), users: $('users').value, persona_id: $('target').value});
+  lists();
+  ok('用户分配已保存，后续请求自动使用指定人设，无需重启。');
+});
+window.addEventListener('beforeunload', e => { if (dirty || run.busy()) { e.preventDefault(); e.returnValue = ''; } });
+
+run(async () => {
+  const offline = await reloadData();
+  edit(state.profiles[0]?.id || catalog.cards[0]?.id || '');
+  if (offline) toast('Bot 角色目录暂不可用，仍可编辑已保存的人设。启动 Bot 后可点「重新读取」加载内置角色。', 'error', {action: {label: '重新读取', run: reload}});
+});
+</script></body></html>

@@ -1,36 +1,415 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AnimaBot 群聊与互聊</title>
-<style>
-:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#14151b;color:#ececf2}*{box-sizing:border-box}body{max-width:1000px;margin:auto;padding:28px}h1{font-size:26px}p,small{color:#b5b8c9;line-height:1.7}a{color:#aebdff}.panel{padding:24px;border:1px solid #353846;border-radius:16px;background:#1e2029;margin:20px 0}label{display:block;margin:18px 0 8px}input{font:inherit;color:inherit;background:#151720;border:1px solid #484c60;border-radius:8px;padding:10px;width:100%}input[type=checkbox]{width:22px;height:22px;vertical-align:middle;margin-right:10px}input:focus{outline:2px solid #7b94ef}button{font:inherit;cursor:pointer;background:#30364c;color:inherit;padding:10px 16px;border:1px solid #6474ae;border-radius:8px}button.primary{background:#526cdb}button:disabled{opacity:.5;cursor:wait}.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}.actions{display:flex;gap:12px;flex-wrap:wrap}#notice{white-space:pre-wrap;min-height:48px;color:#b8c8ff;line-height:1.6}.error{color:#ffb6c2!important}@media(max-width:600px){body{padding:16px}.grid{grid-template-columns:1fr}.panel{padding:16px}}
-.status-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:end}.status-controls label{margin:0}.status-controls select{display:block;max-width:360px;padding:9px;background:#151720;color:inherit;border:1px solid #484c60;border-radius:8px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px;border-bottom:1px solid #353846;white-space:nowrap}.muted{color:#afb5ca}#status-note{white-space:pre-wrap}details{margin-top:16px}
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AnimaBot 群聊与互聊</title>
+<style data-shared="base.css">
+/* AnimaBot shared admin styles. Edit here, then run `node build-ui.mjs` to inline into every page. */
+:root{
+  color-scheme:light;
+  --bg:#f5f6fa;--surface:#ffffff;--field:#ffffff;--line:#e2e6ee;--line-strong:#c3c9d6;
+  --ink:#243044;--muted:#5b6578;--accent:#3f51c4;--accent-hover:#3442b0;--on-accent:#ffffff;
+  --link:#3442b0;--button:#e9ecf7;--button-hover:#dde2f3;--danger:#b4233a;--ok:#1d7a52;
+  --focus:#3f51c4;--toast:#243044;--on-toast:#ffffff;
+  --radius:12px;--gap:20px;--page:1120px;
+  font:15px/1.6 system-ui,"Microsoft YaHei","PingFang SC",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;
+  --bg:#14151b;--surface:#1e2029;--field:#171922;--line:#353846;--line-strong:#4a4e63;
+  --ink:#ececf2;--muted:#b5b8c9;--accent:#3f55c4;--accent-hover:#4a61d4;--on-accent:#ffffff;
+  --link:#aebdff;--button:#2c3142;--button-hover:#363c52;--danger:#ffb6c2;--ok:#8de5be;
+  --focus:#8fa2ff;--toast:#ececf2;--on-toast:#14151b;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink)}
+main{max-width:var(--page);margin:auto;padding:28px 24px 96px}
+h1{font-size:26px;margin:0 0 6px}h2{font-size:18px;margin:0 0 12px}h3{font-size:16px;margin:22px 0 6px}
+p,small,.muted{color:var(--muted)}small{display:block;line-height:1.55;margin-top:4px}
+a{color:var(--link)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin:var(--gap) 0}
+label{display:block;margin:14px 0 6px}
+label.check{display:flex;gap:10px;align-items:center}
+input,textarea,select{font:inherit;color:inherit;background:var(--field);border:1px solid var(--line-strong);border-radius:8px;padding:9px 11px;width:100%;max-width:100%}
+input[type=checkbox]{width:20px;height:20px;padding:0;flex:none;accent-color:var(--accent)}
+textarea{min-height:96px;resize:vertical}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+button{font:inherit;cursor:pointer;color:var(--ink);background:var(--button);border:1px solid var(--line-strong);border-radius:8px;padding:9px 15px}
+button:hover{background:var(--button-hover)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+button.primary:hover{background:var(--accent-hover)}
+button.danger{color:var(--danger)}
+button[aria-pressed="true"],button[aria-current="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+button:disabled{opacity:.55;cursor:not-allowed}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px}
+.actions.sticky{position:sticky;bottom:0;z-index:2;background:var(--bg);margin:0 -24px;padding:12px 24px;border-top:1px solid var(--line)}
+.dirty-flag{color:var(--muted);font-size:13px}
+.dirty-flag[data-dirty="true"]{color:var(--danger)}
+.scroll{overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+td.wrap{white-space:normal;min-width:220px;overflow-wrap:anywhere}
+details.help{margin-top:12px;color:var(--muted)}details.help summary{cursor:pointer;color:var(--ink)}
+.badge{display:inline-block;border:1px solid var(--line-strong);border-radius:999px;padding:2px 10px;font-size:12px}
+.badge.stale{color:var(--danger);border-color:currentColor}
+.error-text{color:var(--danger)}
+.hidden{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#ab-toasts{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:10;display:flex;flex-direction:column;gap:8px;width:min(560px,calc(100% - 32px));pointer-events:none}
+.toast{pointer-events:auto;display:flex;gap:12px;align-items:flex-start;background:var(--toast);color:var(--on-toast);border-radius:10px;padding:11px 14px;box-shadow:0 6px 24px rgba(0,0,0,.25);white-space:pre-wrap}
+.toast.error{border-left:5px solid #e0455f}.toast.ok{border-left:5px solid #2fa36d}
+.toast span{flex:1}
+.toast button{background:transparent;color:inherit;border-color:currentColor;padding:3px 10px;font-size:13px}
+@media (max-width:720px){
+  main{padding:16px 16px 96px}.panel{padding:16px}.grid{grid-template-columns:1fr}
+  .actions.sticky{margin:0 -16px;padding:10px 16px}
+  table.stack thead{display:none}
+  table.stack tr{display:block;border:1px solid var(--line);border-radius:10px;margin:0 0 10px;padding:6px 10px}
+  table.stack td{display:flex;gap:12px;border:0;padding:4px 0}
+  table.stack td::before{content:attr(data-label);color:var(--muted);flex:0 0 38%}
+  table.stack td.wrap{min-width:0}
+  table.stack td[colspan]::before{content:none}
+}
 </style>
-<h1>群聊参与与 bot 互聊</h1><p>分别调整她和群友聊天、与指定 bot 斗嘴的频率。<a href="/webui/" target="_top">返回 NapCat / 登录</a></p>
-<section class="panel"><h2>实时用量与未回复原因</h2><div class="status-controls"><label>群聊 / Bot 账号<select id="status-room"><option value="">所有群合计</option></select></label><label>成员（昵称/接话冷却）<select id="status-member"><option value="">请选择群和成员</option></select></label><button type="button" id="status-refresh">刷新状态</button></div><p id="status-note" role="status">正在连接 Bot…</p><div class="scroll"><table><thead><tr><th>类型 / 范围</th><th>小时 已用 / 剩余 / 上限</th><th>24h 已用 / 剩余 / 上限</th><th>冷却 / 轮次</th></tr></thead><tbody id="status-usage"></tbody></table></div><details open><summary>最近处理结果</summary><p class="muted">按群和成员筛选，显示处理当时的结果；未抽中随机参与、模型选择不参与和服务异常分别记录。不展示聊天正文。上线前的未回复无法追溯。</p><div class="scroll"><table><thead><tr><th>时间 / 消息ID</th><th>群 / 成员</th><th>类型</th><th>处理结果</th></tr></thead><tbody id="status-events"></tbody></table></div></details></section>
-<form id="form"><section class="panel"><h2>群聊参与</h2><p>控制未 @ 时的参与；普通群成员明确 @ 或回复她的消息仍会回应。昵称呼叫、正常接话和随机插话各用独立额度，互不挤占。接话轮次按同一成员统计。</p><div class="grid" id="group"></div><h3>叫昵称时回应</h3><p>被点名优先回应，独立额度和冷却，不受随机插话次数影响。</p><div class="grid" id="nickname"></div><h3>正在聊天时接话</h3><p>最近聊过的成员可以继续接话；每次实际回应刷新接话窗口。关闭随机插话不会关闭这里。</p><div class="grid" id="followup"></div><h3>随机插话与公开问题</h3><p>她自行加入话题时使用这一组严格额度，不消耗昵称和接话额度。</p><div class="grid" id="ambient"></div></section>
-<section class="panel"><h2>bot 互聊</h2><p>仅对名单中允许的 QQ 和群生效；名单请在「插件管理 → AnimaBot 群号与QQ批量管理 → 配置」中编辑，该处互动开关也需开启。每轮最多3条，包含主动开场；已开始的轮次不会因保存而清零。</p><div class="grid" id="bots"></div></section>
-<div class="actions"><button class="primary" id="save" type="submit" disabled>保存并生效</button><button id="reload" type="button">重新读取</button></div></form>
-<p>保存后后续消息立即采用新设置，主动搭话在下一次后台检查时采用。每日额度为滚动24小时尝试次数，0为暂停；失败或模型选择不参与也会计数。保存不会重置计数、冷却或已用轮次。冷却按原时间戳与新间隔计算，不清空冷却记录；互聊窗口长度仅影响新一轮。</p>
-<div id="notice" role="status" aria-live="polite">正在读取…</div>
-<script>
-'use strict';const $=id=>document.getElementById(id);let state=null,busy=false;
-function notice(text,error=false){$('notice').textContent=text;$('notice').classList.toggle('error',error);}
-async function api(body){const token=localStorage.getItem('token');if(!token)throw Error('请先返回 NapCat 登录，再打开本页面。');const r=await fetch('/api/Plugin/ext/napcat-plugin-anima-peer-manager/participation/config',{method:body?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:body?JSON.stringify(body):undefined,cache:'no-store'});const d=await r.json();if(!r.ok||d.code!==0)throw Error(d.code===-1||r.status===401?'登录已过期，请重新登录。':d.message||'操作失败');return d.data;}
-function render(){for(const section of ['group','nickname','followup','ambient','bots'])$(section).replaceChildren();for(const f of state.fields){const box=document.createElement('div'),label=document.createElement('label'),input=document.createElement('input');input.id=f.key;label.htmlFor=f.key;if(f.type==='boolean'){input.type='checkbox';input.checked=state.values[f.key];label.append(input,document.createTextNode(f.label));box.append(label);}else{input.type='number';input.min=f.min;input.max=f.max;input.step=f.integer?'1':'0.01';input.required=true;input.value=state.values[f.key];label.textContent=f.label;const hint=document.createElement('small');hint.textContent='范围 '+f.min+' ～ '+f.max;box.append(label,input,hint);}$(f.section).append(box);}}
-async function run(fn){if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){notice(e.message,true);}finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);$('save').disabled=!state;}}
-$('reload').onclick=()=>run(async()=>{state=await api();render();notice('已读取服务器配置。');});
-$('form').onsubmit=e=>{e.preventDefault();run(async()=>{if(!state)throw Error('请先读取配置');const values=Object.fromEntries(state.fields.map(f=>[f.key,f.type==='boolean'?$(f.key).checked:Number($(f.key).value)]));state=await api({schema_version:2,revision:state.revision,values});render();notice('已保存，后续消息使用新设置，无需重启。已用额度和轮次保持不变。');});};
-run(async()=>{state=await api();render();notice('已读取服务器配置。');});
+<style>
+.status-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.status-controls label{margin:0;flex:1;min-width:220px}
+#status-note{white-space:pre-wrap}
+</style></head><body><main>
+<header><h1>群聊参与与 bot 互聊</h1><p>分别调整她和群友聊天、与指定 bot 斗嘴的频率。<a href="/webui/" target="_top">返回 NapCat / 登录</a></p></header>
+
+<section class="panel" aria-labelledby="status-title">
+  <h2 id="status-title">实时用量与未回复原因</h2>
+  <div class="status-controls">
+    <label>群聊 / Bot 账号<select id="status-room"></select></label>
+    <label>成员（昵称/接话冷却）<select id="status-member"></select></label>
+    <button type="button" id="status-refresh" data-free>刷新状态</button>
+  </div>
+  <p><span id="status-note">正在连接 Bot…</span> <span id="status-badge" class="badge stale hidden">数据已过期</span></p>
+  <div class="scroll"><table class="stack"><thead><tr><th>类型 / 范围</th><th>小时 已用 / 剩余 / 上限</th><th>24h 已用 / 剩余 / 上限</th><th>冷却 / 轮次</th></tr></thead><tbody id="status-usage"></tbody></table></div>
+  <details open><summary>最近处理结果</summary>
+    <p>按群和成员筛选，显示处理当时的结果；未抽中随机参与、模型选择不参与和服务异常分别记录。不展示聊天正文。上线前的未回复无法追溯。</p>
+    <div class="scroll"><table class="stack"><thead><tr><th>时间 / 消息ID</th><th>群 / 成员</th><th>类型</th><th>处理结果</th></tr></thead><tbody id="status-events"></tbody></table></div>
+  </details>
+</section>
+
+<form id="form">
+<section class="panel" aria-labelledby="group-title">
+  <h2 id="group-title">群聊参与</h2>
+  <p>控制未 @ 时的参与；群成员明确 @ 或回复她的消息一定会得到回应。昵称呼叫、正常接话和随机插话各用独立额度，互不挤占。接话轮次按同一成员统计。</p>
+  <div class="grid" id="group"></div>
+  <h3>叫昵称时回应</h3><small>被点名优先回应，独立额度和冷却，不受随机插话次数影响。</small><div class="grid" id="nickname"></div>
+  <h3>正在聊天时接话</h3><small>最近聊过的成员可以继续接话；每次实际回应刷新接话窗口。关闭随机插话不会关闭这里。</small><div class="grid" id="followup"></div>
+  <h3>随机插话与公开问题</h3><small>她自行加入话题时使用这一组严格额度，不消耗昵称和接话额度。</small><div class="grid" id="ambient"></div>
+</section>
+<section class="panel" aria-labelledby="bots-title">
+  <h2 id="bots-title">bot 互聊</h2>
+  <p>仅对名单中允许的 QQ 和群生效；名单请在「插件管理 → AnimaBot 群号与QQ批量管理 → 配置」中编辑，该处互动开关也需开启。每轮最多3条，包含主动开场；已开始的轮次不会因保存而清零。</p>
+  <div class="grid" id="bots"></div>
+</section>
+<div class="actions sticky"><button class="primary" id="save" type="submit" disabled>保存并生效</button><button id="reload" type="button">重新读取</button><span id="dirty" class="dirty-flag" aria-live="polite"></span></div>
+</form>
+<details class="help"><summary>保存后何时生效、计数如何变化</summary><p>保存后后续消息立即采用新设置，主动搭话在下一次后台检查时采用。每日额度为滚动24小时尝试次数，0为暂停；失败或模型选择不参与也会计数。保存不会重置计数、冷却或已用轮次。冷却按原时间戳与新间隔计算，不清空冷却记录；互聊窗口长度仅影响新一轮。</p></details>
+</main>
+<script data-shared="base.js">
+// AnimaBot shared admin helpers. Edit here, then run `node build-ui.mjs` to inline into every page.
+'use strict';
+window.AB = (() => {
+  const $ = id => document.getElementById(id);
+
+  class ApiError extends Error {
+    constructor(message, status = 0) { super(message); this.status = status; }
+  }
+
+  // fetch + JSON with readable Chinese errors for network failures, HTML error pages and expired logins.
+  async function request(url, {method, body, headers = {}} = {}) {
+    let response;
+    try {
+      response = await fetch(url, {method: method || (body === undefined ? 'GET' : 'POST'), cache: 'no-store',
+        headers: {'Content-Type': 'application/json', ...headers}, body: body === undefined ? undefined : JSON.stringify(body)});
+    } catch {
+      throw new ApiError('无法连接服务器，请确认服务正在运行、网络正常后重试。');
+    }
+    const text = await response.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { /* non-JSON, e.g. a proxy error page */ }
+    return {response, data};
+  }
+
+  // Client for this plugin's NapCat routes; the NapCat WebUI keeps its login token in localStorage.
+  function napcat(base) {
+    return async (path, body) => {
+      let token = null;
+      try { token = localStorage.getItem('token'); } catch { /* storage blocked */ }
+      if (!token) throw new ApiError('请先返回 NapCat 登录，再重新打开本页面。', 401);
+      const {response, data} = await request(base + path, {body, headers: {Authorization: 'Bearer ' + token}});
+      if (response.status === 401 || data?.code === -1) throw new ApiError('登录已过期，请点击上方链接重新登录 NapCat，再从扩展页面进入。', 401);
+      if (!data) throw new ApiError(`服务器返回了无法识别的内容（HTTP ${response.status}），请刷新页面；若持续出现请查看 NapCat 日志。`, response.status);
+      if (!response.ok || data.code !== 0) throw new ApiError(data.message || `操作失败（HTTP ${response.status}）`, response.status);
+      return data.data;
+    };
+  }
+
+  // Toasts sit at the bottom of the viewport so results are visible however far the page is scrolled.
+  let toastRoot = null;
+  function toast(message, kind = 'info', {action} = {}) {
+    if (!toastRoot) {
+      toastRoot = document.createElement('div');
+      toastRoot.id = 'ab-toasts';
+      document.body.append(toastRoot);
+    }
+    toastRoot.replaceChildren();
+    const box = document.createElement('div');
+    box.className = 'toast ' + kind;
+    box.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    const text = document.createElement('span');
+    text.textContent = message;
+    box.append(text);
+    if (action) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = action.label;
+      b.onclick = () => { box.remove(); action.run(); };
+      box.append(b);
+    }
+    const close = document.createElement('button');
+    close.type = 'button'; close.textContent = '关闭'; close.setAttribute('aria-label', '关闭提示');
+    close.onclick = () => box.remove();
+    box.append(close);
+    toastRoot.append(box);
+    if (kind === 'ok') setTimeout(() => box.remove(), 5000);
+  }
+  const ok = message => toast(message, 'ok');
+  function error(err, reload) {
+    const message = err?.message || String(err);
+    toast(message, 'error', err?.status === 409 && reload ? {action: {label: '重新读取', run: reload}} : undefined);
+  }
+
+  // One action at a time. Buttons are disabled while it runs; form fields stay usable so focus is never lost.
+  function runner({onError} = {}) {
+    let busy = false;
+    const run = async fn => {
+      if (busy) return false;
+      busy = true;
+      document.body.setAttribute('aria-busy', 'true');
+      const buttons = [...document.querySelectorAll('button:not([data-free])')].filter(b => !b.disabled);
+      buttons.forEach(b => { b.disabled = true; });
+      try { await fn(); return true; }
+      catch (err) { (onError || error)(err); return false; }
+      finally {
+        busy = false;
+        document.body.removeAttribute('aria-busy');
+        buttons.forEach(b => { b.disabled = false; });
+      }
+    };
+    run.busy = () => busy;
+    return run;
+  }
+
+  // Poll while the tab is visible, never overlapping requests.
+  function poll(fn, ms) {
+    let inFlight = false;
+    const tick = async () => {
+      if (inFlight || document.hidden) return;
+      inFlight = true;
+      try { await fn(); } finally { inFlight = false; }
+    };
+    setInterval(tick, ms);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+    tick();
+    return tick;
+  }
+
+  // Rebuild a <select> only when its options really changed, so an open dropdown is not closed by polling.
+  function setOptions(select, items, fallback = '') {
+    const signature = JSON.stringify(items.map(i => [i.value, i.label]));
+    if (select.dataset.signature !== signature) {
+      const old = select.value;
+      select.replaceChildren(...items.map(i => new Option(i.label, i.value)));
+      select.dataset.signature = signature;
+      select.value = items.some(i => i.value === old) ? old : fallback;
+    }
+    return select.value;
+  }
+
+  // Update table cells in place (text selection and scroll survive refreshes). Rows are arrays of text,
+  // or {empty: text} for a single full-width message row. `labels` feed the narrow-screen card layout.
+  function setRows(tbody, rows, {labels = [], wrap = []} = {}) {
+    rows.forEach((row, index) => {
+      let tr = tbody.rows[index];
+      const cells = row.empty !== undefined ? [row.empty] : row;
+      if (!tr || tr.cells.length !== cells.length) {
+        const fresh = document.createElement('tr');
+        cells.forEach((_, i) => {
+          const td = document.createElement('td');
+          if (row.empty !== undefined) td.colSpan = labels.length || 1;
+          else { if (labels[i]) td.dataset.label = labels[i]; if (wrap.includes(i)) td.className = 'wrap'; }
+          fresh.append(td);
+        });
+        tr ? tr.replaceWith(fresh) : tbody.append(fresh);
+        tr = fresh;
+      }
+      cells.forEach((value, i) => {
+        const text = value ?? '—';
+        const td = tr.cells[i];
+        if (td.textContent !== String(text)) td.textContent = text;
+      });
+    });
+    while (tbody.rows.length > rows.length) tbody.deleteRow(-1);
+  }
+
+  // Assign text only when it changed, so periodic refreshes do not reset the user's text selection.
+  function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
+
+  const pad = n => String(n).padStart(2, '0');
+  function duration(seconds) {
+    const n = Math.max(0, Math.ceil(seconds));
+    if (!n) return '已到期';
+    const h = Math.floor(n / 3600), m = Math.floor(n % 3600 / 60), s = n % 60;
+    return (h ? h + '时' : '') + (h || m ? m + '分' : '') + s + '秒';
+  }
+  const stamp = seconds => seconds ? new Date(seconds * 1000).toLocaleString() : '—';
+
+  // Unsaved-change tracking: marks the flag element, warns before leaving or replacing the form.
+  function dirtyTracker(flag) {
+    let dirty = false;
+    const show = () => {
+      if (!flag) return;
+      flag.dataset.dirty = String(dirty);
+      flag.textContent = dirty ? '有未保存的修改' : '已与服务器同步';
+    };
+    window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+    show();
+    return {
+      get dirty() { return dirty; },
+      mark() { if (!dirty) { dirty = true; show(); } },
+      clear() { dirty = false; show(); },
+      watch(root) { root.addEventListener('input', () => this.mark()); root.addEventListener('change', () => this.mark()); },
+      confirmDiscard(message = '有未保存的修改，继续将丢失这些修改。确定继续吗？') { return !dirty || confirm(message); },
+    };
+  }
+
+  return {$, ApiError, request, napcat, toast, ok, error, runner, poll, setOptions, setRows, setText, duration, stamp, pad, dirtyTracker};
+})();
 </script>
 <script>
-let live=null,liveAt=0,liveBusy=false,liveError='';
-const modeName={mention:'明确@',nickname:'叫昵称',followup:'正常接话',ambient:'随机插话',bots:'bot互聊','bot-interaction':'bot回应','bot-proactive':'bot主动开场'};
-const serverNow=()=>live.server_time+(performance.now()-liveAt)/1000;
-function duration(until){const n=Math.max(0,Math.ceil(until-serverNow()));return n?Math.floor(n/60)+'分'+n%60+'秒':'已到期';}
-function cellRow(target,values){const tr=document.createElement('tr');for(const value of values){const td=document.createElement('td');td.textContent=value;tr.append(td);}$(target).append(tr);}
-function quotaText(q){return q?q.used+' / '+q.remaining+' / '+q.limit+(q.paused?'（暂停）':q.remaining===0?(q.retry_at>serverNow()?'（额度满，'+duration(q.retry_at)+'后释放）':'（等待刷新额度）'):''):'—';}
-function selectors(){const old=$('status-room').value,member=$('status-member').value;$('status-room').replaceChildren(new Option('所有群合计',''),...live.rooms.map(r=>new Option('群 '+r.group_id+' · Bot '+r.bot_id,r.id)));if(live.rooms.some(r=>r.id===old))$('status-room').value=old;const room=live.rooms.find(r=>r.id===$('status-room').value);$('status-member').replaceChildren(new Option('全部成员',''),...(room?.members||[]).map(m=>new Option(m.id,m.id)));if(room?.members.some(m=>m.id===member))$('status-member').value=member;}
-function renderLive(){if(!live)return;const room=live.rooms.find(r=>r.id===$('status-room').value),member=room?.members.find(m=>m.id===$('status-member').value);$('status-note').textContent=(liveError?liveError+'\n':'')+'上次读取：'+new Date(live.server_time*1000).toLocaleString()+' · 每5秒刷新；倒计时按服务器时间计算。\n'+live.limits_note+' 刷新状态不会覆盖未保存设置。';$('status-note').classList.toggle('error',!!liveError);$('status-usage').replaceChildren();
- const scopes=room?[[room.quotas,'本群'],[live.quotas,'全局']]:[[live.quotas,'全局']];for(const [quotas,label] of scopes){for(const key of ['nickname','followup','ambient','bots']){const q=quotas[key];let wait=label==='全局'?'按群/成员分别计算':'请选择成员';if(room&&label==='本群'){if(key==='ambient')wait=duration(room.ambient_until);if(key==='nickname'&&member)wait=duration(member.nickname_until);if(key==='followup'&&member)wait=duration(member.followup_until)+' · 窗口内 '+member.rounds_used+'/'+member.rounds_limit+' 次'+(member.rounds_used>=member.rounds_limit?' · '+duration(member.rounds_retry_at)+'后释放':'');if(key==='bots'){const b=room.bot_state;wait=b?duration(b.cooldown_until)+' · 本轮 '+b.rounds+'/'+b.rounds_limit+' 条'+(b.active&&!b.waiting?' · 正在处理或本轮已结束':''): '无互聊记录';}}cellRow('status-usage',[modeName[key]+' / '+label+(key==='bots'&&room&&label==='本群'?'（24h为全局）':'')+(q.enabled?'':' · 已关闭'),quotaText(q.hourly),quotaText(q.daily),wait]);}}cellRow('status-usage',['bot主动开场 / 全局'+(live.quotas.bots.proactive_enabled?'':' · 已关闭'),'—',quotaText(live.quotas.bots.proactive_daily),'包含在bot互聊总额度中']);
- $('status-events').replaceChildren();const events=live.events.filter(e=>(!room||e.room===room.id)&&(!member||e.participant===member.id)).slice(0,60);for(const e of events){const r=live.rooms.find(r=>r.id===e.room);cellRow('status-events',[new Date(e.created*1000).toLocaleString()+(e.external_id?' · '+e.external_id:''),(r?'群 '+r.group_id:e.room)+' / '+(e.participant||'—'),modeName[e.mode]||e.mode,e.label+(e.retry_at?' · '+duration(e.retry_at):'')]);}if(!events.length)cellRow('status-events',['—','—','—','暂无处理记录；不能据此判断原因']);}
-async function refreshLive(){if(liveBusy||document.hidden)return;liveBusy=true;try{const token=localStorage.getItem('token');if(!token)throw Error('请先登录 NapCat。');const r=await fetch('/api/Plugin/ext/napcat-plugin-anima-peer-manager/participation/status',{headers:{Authorization:'Bearer '+token},cache:'no-store'});const d=await r.json();if(!r.ok||d.code!==0)throw Error(d.message||'无法读取状态');live=d.data;liveAt=performance.now();liveError='';selectors();renderLive();}catch(e){liveError=e.message;if(live)renderLive();else{$('status-note').textContent=liveError;$('status-note').classList.add('error');}}finally{liveBusy=false;}}
-$('status-room').onchange=()=>{selectors();renderLive();};$('status-member').onchange=renderLive;$('status-refresh').onclick=refreshLive;setInterval(refreshLive,5000);setInterval(()=>{if(live&&!document.hidden)renderLive();},1000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshLive();});refreshLive();
-</script></html>
+'use strict';
+const {$, napcat, ok, error, runner, poll, setOptions, setRows, setText, duration, stamp, dirtyTracker} = AB;
+const api = napcat('/api/Plugin/ext/napcat-plugin-anima-peer-manager/participation/');
+const dirty = dirtyTracker($('dirty'));
+const run = runner({onError: err => error(err, reload)});
+let state = null;
+
+function render() {
+  for (const section of ['group', 'nickname', 'followup', 'ambient', 'bots']) $(section).replaceChildren();
+  for (const f of state.fields) {
+    const box = document.createElement('div'), label = document.createElement('label'), input = document.createElement('input');
+    input.id = f.key;
+    if (f.type === 'boolean') {
+      input.type = 'checkbox'; input.checked = state.values[f.key];
+      label.className = 'check'; label.append(input, document.createTextNode(f.label));
+      box.append(label);
+    } else {
+      Object.assign(input, {type: 'number', min: f.min, max: f.max, step: f.integer ? '1' : '0.01', required: true, value: state.values[f.key]});
+      label.htmlFor = f.key; label.textContent = f.label;
+      const hint = document.createElement('small');
+      hint.id = f.key + '_hint'; hint.textContent = '范围 ' + f.min + ' ～ ' + f.max;
+      input.setAttribute('aria-describedby', hint.id);
+      box.append(label, input, hint);
+    }
+    $(f.section).append(box);
+  }
+  $('save').disabled = false;
+  dirty.clear();
+}
+async function load(message) { state = await api('config'); render(); if (message) ok(message); }
+function reload() {
+  if (!dirty.confirmDiscard('重新读取会丢弃尚未保存的修改。确定继续吗？')) return;
+  run(() => load('已读取服务器配置。'));
+}
+dirty.watch($('form'));
+$('reload').onclick = reload;
+$('form').onsubmit = e => {
+  e.preventDefault();
+  run(async () => {
+    if (!state) throw new Error('请先读取配置');
+    const values = Object.fromEntries(state.fields.map(f => [f.key, f.type === 'boolean' ? $(f.key).checked : Number($(f.key).value)]));
+    state = await api('config', {schema_version: 2, revision: state.revision, values});
+    render();
+    ok('已保存，后续消息使用新设置，无需重启。已用额度和轮次保持不变。');
+  });
+};
+run(() => load());
+
+// Live status: options and cells are patched in place so polling never closes a dropdown or clears a selection.
+let live = null, liveAt = 0, liveError = '';
+const modeName = {mention: '明确@', nickname: '叫昵称', followup: '正常接话', ambient: '随机插话', bots: 'bot互聊', 'bot-interaction': 'bot回应', 'bot-proactive': 'bot主动开场'};
+const serverNow = () => live.server_time + (performance.now() - liveAt) / 1000;
+const until = t => duration(t - serverNow());
+const quotaText = q => !q ? '—' : q.used + ' / ' + q.remaining + ' / ' + q.limit +
+  (q.paused ? '（暂停）' : q.remaining === 0 ? (q.retry_at > serverNow() ? '（额度满，' + until(q.retry_at) + '后释放）' : '（等待刷新额度）') : '');
+
+function selectors() {
+  const roomId = setOptions($('status-room'), [{value: '', label: '所有群合计'},
+    ...live.rooms.map(r => ({value: r.id, label: '群 ' + r.group_id + ' · Bot ' + r.bot_id}))]);
+  const room = live.rooms.find(r => r.id === roomId);
+  setOptions($('status-member'), room ? [{value: '', label: '全部成员'}, ...room.members.map(m => ({value: m.id, label: m.id}))]
+    : [{value: '', label: '请先选择群'}]);
+  $('status-member').disabled = !room;
+}
+function renderLive() {
+  if (!live) return;
+  const room = live.rooms.find(r => r.id === $('status-room').value);
+  const member = room?.members.find(m => m.id === $('status-member').value);
+  setText($('status-note'), '上次读取：' + stamp(live.server_time) + ' · 每5秒刷新；倒计时按服务器时间计算。\n' + live.limits_note +
+    ' 刷新状态不会覆盖未保存设置。' + (liveError ? '\n' + liveError : ''));
+  $('status-badge').classList.toggle('hidden', !liveError);
+  const rows = [];
+  const scopes = room ? [[room.quotas, '本群'], [live.quotas, '全局']] : [[live.quotas, '全局']];
+  for (const [quotas, label] of scopes) {
+    for (const key of ['nickname', 'followup', 'ambient', 'bots']) {
+      const q = quotas[key];
+      let wait = label === '全局' ? '按群/成员分别计算' : '请选择成员';
+      if (room && label === '本群') {
+        if (key === 'ambient') wait = until(room.ambient_until);
+        if (key === 'nickname' && member) wait = until(member.nickname_until);
+        if (key === 'followup' && member) wait = until(member.followup_until) + ' · 窗口内 ' + member.rounds_used + '/' + member.rounds_limit + ' 次' +
+          (member.rounds_used >= member.rounds_limit ? ' · ' + until(member.rounds_retry_at) + '后释放' : '');
+        if (key === 'bots') {
+          const b = room.bot_state;
+          wait = b ? until(b.cooldown_until) + ' · 本轮 ' + b.rounds + '/' + b.rounds_limit + ' 条' + (b.active && !b.waiting ? ' · 正在处理或本轮已结束' : '') : '无互聊记录';
+        }
+      }
+      rows.push([modeName[key] + ' / ' + label + (key === 'bots' && room && label === '本群' ? '（24h为全局）' : '') + (q.enabled ? '' : ' · 已关闭'),
+        quotaText(q.hourly), quotaText(q.daily), wait]);
+    }
+  }
+  rows.push(['bot主动开场 / 全局' + (live.quotas.bots.proactive_enabled ? '' : ' · 已关闭'), '—', quotaText(live.quotas.bots.proactive_daily), '包含在bot互聊总额度中']);
+  setRows($('status-usage'), rows, {labels: ['类型 / 范围', '小时 已用 / 剩余 / 上限', '24h 已用 / 剩余 / 上限', '冷却 / 轮次'], wrap: [3]});
+  const events = live.events.filter(e => (!room || e.room === room.id) && (!member || e.participant === member.id)).slice(0, 60);
+  setRows($('status-events'), events.length ? events.map(e => {
+    const r = live.rooms.find(r => r.id === e.room);
+    return [stamp(e.created) + (e.external_id ? ' · ' + e.external_id : ''), (r ? '群 ' + r.group_id : e.room) + ' / ' + (e.participant || '—'),
+      modeName[e.mode] || e.mode, e.label + (e.retry_at ? ' · ' + until(e.retry_at) : '')];
+  }) : [{empty: '暂无处理记录；不能据此判断原因'}], {labels: ['时间 / 消息ID', '群 / 成员', '类型', '处理结果'], wrap: [3]});
+}
+async function refreshLive() {
+  try {
+    live = await api('status'); liveAt = performance.now(); liveError = '';
+    selectors();
+  } catch (err) {
+    liveError = err.message;
+    if (!live) { setText($('status-note'), err.message); $('status-note').classList.add('error-text'); return; }
+  }
+  $('status-note').classList.remove('error-text');
+  renderLive();
+}
+setOptions($('status-room'), [{value: '', label: '所有群合计'}]);
+setOptions($('status-member'), [{value: '', label: '请先选择群'}]);
+$('status-member').disabled = true;
+$('status-room').onchange = () => { selectors(); renderLive(); };
+$('status-member').onchange = renderLive;
+const tick = poll(refreshLive, 5000);
+$('status-refresh').onclick = tick;
+setInterval(() => { if (live && !document.hidden) renderLive(); }, 1000);
+</script></body></html>
