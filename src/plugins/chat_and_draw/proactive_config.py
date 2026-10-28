@@ -5,6 +5,7 @@ import math
 import os
 from pathlib import Path
 
+from . import config_errors
 from .config import ROOT
 
 
@@ -50,6 +51,9 @@ def settings():
         if path.stat().st_size > 32768:
             raise ValueError()
         raw = path.read_bytes()
-        return {**validate(json.loads(raw)), '_revision':hashlib.sha256(raw).hexdigest()}
-    except (OSError,ValueError,TypeError,KeyError):
+        result = {**validate(json.loads(raw)), '_revision':hashlib.sha256(raw).hexdigest()}
+        config_errors.clear('proactive')
+        return result
+    except (OSError,ValueError,TypeError,KeyError) as exc:
+        config_errors.report('proactive', path, exc)
         return {**default,'enabled':False,'windows':[], '_revision':'unavailable'}

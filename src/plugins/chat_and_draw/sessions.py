@@ -149,7 +149,12 @@ class SessionStore:
                     user_id=session.user_id or parts[-1]
                 except (ValueError,TypeError,IndexError,KeyError):
                     bot_id,user_id=session.bot_id,session.user_id
-                assigned=binding(bot_id,user_id) if bot_id and user_id else None
+                try:
+                    assigned=binding(bot_id,user_id) if bot_id and user_id else None
+                except ValueError:
+                    # Assignment file unreadable (already logged): keep whatever this user has
+                    # now rather than failing every message or silently unbinding them.
+                    assigned=session.persona_binding_target or None
                 if assigned != (session.persona_binding_target or None) or (assigned and session.character != assigned):
                     target=assigned or session.persona_binding_previous or self.role_id()
                     if assigned and not session.persona_binding_target:

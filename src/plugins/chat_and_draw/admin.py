@@ -16,6 +16,7 @@ from nonebot.adapters.onebot.v11 import MessageSegment
 from .delivery import try_send
 from .runtime import ARTIFACT_DIR, RuntimeStore, operation
 from .sticker_library import library
+from . import config_errors
 from .memory import EventMemoryStore
 from .qq_text import contains_cq_code
 
@@ -123,7 +124,8 @@ def register_admin(app, get_store):
             return totals
         return {"runs": runs, "tasks": tasks, "roles": await asyncio.to_thread(roles),
                 "usage": await runtime.call(usage), "provider": "openai-compatible",
-                "model": os.getenv("LLM_MODEL", "deepseek-chat")}
+                "model": os.getenv("LLM_MODEL", "deepseek-chat"),
+                "config_errors": config_errors.current()}
 
     @app.get("/manage/api/runs/{identity}", include_in_schema=False)
     async def run_detail(identity: str, request: Request):

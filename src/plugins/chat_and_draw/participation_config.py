@@ -4,6 +4,8 @@ import math
 import os
 from pathlib import Path
 
+from . import config_errors
+
 ROOT = Path(__file__).resolve().parents[3]
 SCHEMA = json.loads((ROOT / 'deploy/napcat/napcat-plugin-anima-peer-manager/participation.schema.json').read_text(encoding='utf-8'))
 FIELDS = {f['key']: f for f in SCHEMA}
@@ -50,8 +52,11 @@ def managed():
     try:
         if path.stat().st_size > 32768:
             raise ValueError()
-        return validate(json.loads(path.read_text(encoding='utf-8')))['values']
-    except (OSError, ValueError, TypeError):
+        values = validate(json.loads(path.read_text(encoding='utf-8')))['values']
+        config_errors.clear('participation')
+        return values
+    except (OSError, ValueError, TypeError) as exc:
+        config_errors.report('participation', path, exc)
         # Known bots remain quarantined by peer_config even while disabled.
         return {key: False if f['type']=='boolean' else f['default'] for key,f in FIELDS.items()}
 

@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+from . import config_errors
 from .reply_style import normalize
 
 ROOT=Path(__file__).resolve().parents[3]
@@ -36,8 +37,10 @@ def read():
             key=(b['bot_id'],b['user_id'])
             if key in keys:raise ValueError()
             keys.add(key)
+        config_errors.clear('persona')
         return data
-    except (OSError,ValueError,TypeError,KeyError,AttributeError):
+    except (OSError,ValueError,TypeError,KeyError,AttributeError) as exc:
+        config_errors.report('persona', path, exc)
         raise ValueError('PERSONA_CONFIG_UNAVAILABLE') from None
 
 

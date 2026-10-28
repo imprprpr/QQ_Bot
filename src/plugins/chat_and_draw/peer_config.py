@@ -5,6 +5,8 @@ from pathlib import Path
 import re
 from threading import RLock
 
+from . import config_errors
+
 _lock = RLock()
 _cache = {}
 
@@ -38,15 +40,19 @@ def managed():
             known = _ids(data.get('known_targets', data.get('targets')))
             result = {'enabled': data['enabled'], 'targets': targets, 'groups': groups,
                       'known': old['known'] | known | targets, 'signature': signature}
-        except (OSError, ValueError, TypeError, AttributeError):
+            config_errors.clear('peer')
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            config_errors.report('peer', path, exc)
             # Keep known bots quarantined from the unlimited human @ path.
             known = set(old['known'])
             try:
                 quarantine = Path(str(path) + '.known.json')
                 if quarantine.stat().st_size <= 256 * 1024:
                     known |= _ids(json.loads(quarantine.read_text(encoding='utf-8')).get('known_targets'))
-            except (OSError, ValueError, TypeError, AttributeError):
+            except FileNotFoundError:
                 pass
+            except (OSError, ValueError, TypeError, AttributeError) as exc:
+                config_errors.report('peer-quarantine', quarantine, exc)
             result = {'enabled': False, 'targets': set(), 'groups': set(), 'known': known}
         _cache[str(path)] = result
         return result
