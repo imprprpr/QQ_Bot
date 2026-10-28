@@ -1,12 +1,13 @@
 """Bot commands callbacks."""
 from datetime import datetime
-from nonebot.adapters.onebot.v11 import Bot, Event, Message
+from nonebot.adapters.onebot.v11 import Bot, Event, Message, MessageSegment
 from nonebot.params import CommandArg
 from .config import feature_enabled
 from .sessions import session_key
 from .tavern import tavern_manager
 from .runtime import operation
 from .memory import EventMemoryStore
+from .qq_text import contains_cq_code
 
 class CommandHandlers:
 
@@ -59,12 +60,16 @@ class CommandHandlers:
             session = await self.store.load(key)
             card = self.current_card(session)
             notes = '\n'.join((f'{i}. {text}' for (i, text) in enumerate(session.memories, 1))) or '暂无长期记忆，可用 /remember 内容 添加。'
-            await self.cmd_memory.send(f'{(card.name if card else session.character)} 的记忆：\n{notes}' + (f'\n阶段摘要：{session.summary}' if session.summary else ''))
+            # Stored text is user/LLM-controlled: send it as a text segment so CQ codes stay literal.
+            await self.cmd_memory.send(MessageSegment.text(f'{(card.name if card else session.character)} 的记忆：\n{notes}' + (f'\n阶段摘要：{session.summary}' if session.summary else '')))
 
     async def handle_remember(self, bot: Bot, event: Event, args: Message=CommandArg()):
         text = args.extract_plain_text().strip()
         if not text or len(text) > 300:
             await self.cmd_remember.send('用法：/remember 我喜欢海边。每条最多 300 字。')
+            return
+        if contains_cq_code(text):
+            await self.cmd_remember.send('记忆里不能包含 QQ 消息码，请只写普通文字。')
             return
         key = session_key(bot, event)
         async with self.store.lock(key):
@@ -84,7 +89,7 @@ class CommandHandlers:
             session = await self.store.load(key)
             items = await EventMemoryStore(self.store.path).list(key, session.character)
             lines = [f"{item['id'][:8]} [{item['status']}] {item['statement']}\n记录于{datetime.fromtimestamp(item['mentioned_at']).isoformat(timespec='minutes')}，事件日期{item['event_date'] or '未明确'}，来源{item['source_run_id'][:8]}" for item in items[:10]]
-            await self.cmd_events.send('当前角色的自动记忆（最近10条）：\n' + ('\n\n'.join(lines) if lines else '暂无。') + '\n可用 /forgetevent ID 删除；管理页可查看全部有效记录。')
+            await self.cmd_events.send(MessageSegment.text('当前角色的自动记忆（最近10条）：\n' + ('\n\n'.join(lines) if lines else '暂无。') + '\n可用 /forgetevent ID 删除；管理页可查看全部有效记录。'))
 
     async def handle_forget_event(self, bot: Bot, event: Event, args: Message=CommandArg()):
         identity = args.extract_plain_text().strip().lower()

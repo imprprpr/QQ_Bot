@@ -17,6 +17,7 @@ from .delivery import try_send
 from .runtime import ARTIFACT_DIR, RuntimeStore, operation
 from .sticker_library import library
 from .memory import EventMemoryStore
+from .qq_text import contains_cq_code
 
 
 def admin_token(store):
@@ -139,6 +140,8 @@ def register_admin(app, get_store):
         notes, summary = data.get("memories", []), data.get("summary", "")
         if not isinstance(notes, list) or len(notes) > 30 or any(not isinstance(n, str) or len(n) > 300 for n in notes) or not isinstance(summary, str) or len(summary) > 4000:
             raise HTTPException(400, "记忆最多30条，每条300字；摘要最多4000字")
+        if any(contains_cq_code(n) for n in notes) or contains_cq_code(summary):
+            raise HTTPException(400, "记忆和摘要不能包含 QQ 消息码")
         key, character = data.get("session_key"), data.get("character")
         if not isinstance(key, str) or not isinstance(character, str):
             raise HTTPException(400, "缺少会话与角色标识")

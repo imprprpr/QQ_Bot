@@ -6,6 +6,14 @@ class QQText(str):
     """Already-rendered text: avoid reinterpreting literal source as markup."""
 
 
+CQ_CODE = re.compile(r'\[\s*CQ\s*:', re.I)
+
+
+def contains_cq_code(text):
+    """True when text would be parsed as a OneBot CQ segment if sent as a plain string."""
+    return isinstance(text, str) and bool(CQ_CODE.search(text))
+
+
 def _inline(text):
     code = []
     def keep(match):

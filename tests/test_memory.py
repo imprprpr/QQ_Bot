@@ -169,8 +169,9 @@ class EventMemoryTests(unittest.IsolatedAsyncioTestCase):
              patch.object(plugin.cmd_events, "send", AsyncMock()) as show, \
              patch.object(plugin.cmd_forget_event, "send", AsyncMock()):
             await plugin.handle_events(self.bot, self.event)
-            self.assertIn(identity[:8], show.call_args.args[0])
-            self.assertIn("source-r", show.call_args.args[0])
+            shown = show.call_args.args[0].data["text"]
+            self.assertIn(identity[:8], shown)
+            self.assertIn("source-r", shown)
             await plugin.handle_forget_event(self.bot, self.event, Message(identity[:8]))
         self.assertEqual(await self.store.list(self.key, "ling"), [])
 
