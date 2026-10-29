@@ -1,0 +1,56 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: python -m pip install -r requirements.txt
+      - name: Unit tests (offline; model calls are mocked or served by local fixtures)
+        run: python -m unittest discover -s tests
+
+  napcat-plugin:
+    name: NapCat plugin and admin pages
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/napcat/napcat-plugin-anima-peer-manager
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node build-ui.mjs --check
+      - run: npm test
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t animabot:ci .
+      - name: Image starts and the setup wizard runs
+        run: |
+          set +e
+          docker run --rm animabot:ci python tools/setup_wizard.py --check
+          code=$?
+          # 2 = "not configured yet", which is what a fresh image should report.
+          test "$code" -eq 2

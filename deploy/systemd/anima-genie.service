@@ -1,3 +1,5 @@
+# Optional Genie-TTS voice service (advanced). Paths below are an example for user "ubuntu";
+# adjust User/WorkingDirectory/ExecStart to where you installed Genie-TTS.
 [Unit]
 Description=AnimaBot Genie-TTS CPU voice service
 Wants=network-online.target

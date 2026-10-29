@@ -1,0 +1,40 @@
+# AnimaBot + NapCat (QQ). Quick start:
+#   1. cp .env.example .env
+#   2. docker compose run --rm animabot python tools/setup_wizard.py --docker
+#   3. docker compose up -d
+#   4. Open http://127.0.0.1:6099/webui (token: docker compose logs napcat), scan the QR code,
+#      then add a "WebSocket 客户端" with URL ws://animabot:8080/onebot/v11/ws and the token from .env.
+services:
+  animabot:
+    build: .
+    container_name: animabot
+    restart: unless-stopped
+    volumes:
+      - ./.env:/app/.env
+      - animabot-data:/app/data
+      # Use your own character cards instead of the bundled ones:
+      # - ./characters:/app/characters:ro
+    ports:
+      # Admin page at http://127.0.0.1:8080/manage — published on this computer only.
+      - "127.0.0.1:8080:8080"
+
+  napcat:
+    image: mlikiowa/napcat-docker:latest
+    container_name: napcat
+    restart: unless-stopped
+    environment:
+      - NAPCAT_UID=${NAPCAT_UID:-1000}
+      - NAPCAT_GID=${NAPCAT_GID:-1000}
+    volumes:
+      - napcat-qq:/app/.config/QQ
+      - napcat-config:/app/napcat/config
+      - napcat-plugins:/app/napcat/plugins
+    ports:
+      # NapCat WebUI (QR-code login and network settings), this computer only.
+      - "127.0.0.1:6099:6099"
+
+volumes:
+  animabot-data:
+  napcat-qq:
+  napcat-config:
+  napcat-plugins:

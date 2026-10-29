@@ -1,3 +1,5 @@
+# Template: run `sudo deploy/systemd/install.sh` from the project folder to fill in the
+# user and paths and install it. Placeholders: __USER__, __DIR__.
 [Unit]
 Description=AnimaBot QQ companion
 Wants=network-online.target
@@ -7,11 +9,10 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/QQ_Bot
-Environment=HOME=/home/ubuntu
+User=__USER__
+WorkingDirectory=__DIR__
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/ubuntu/QQ_Bot/.venv/bin/python /home/ubuntu/QQ_Bot/bot.py
+ExecStart=__DIR__/.venv/bin/python __DIR__/bot.py
 Restart=always
 RestartSec=5s
 TimeoutStopSec=30s
