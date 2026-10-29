@@ -58,6 +58,10 @@ if errorlevel 1 (
 )
 
 rem ===== 5. 启动 =====
+if defined ANIMABOT_NO_START (
+  echo 环境检查完成，已按 ANIMABOT_NO_START 跳过启动。
+  exit /b 0
+)
 echo.
 echo ==================================================
 echo   AnimaBot 正在运行。关闭这个窗口就会停止机器人。

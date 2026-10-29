@@ -43,6 +43,47 @@ jobs:
       - run: node build-ui.mjs --check
       - run: npm test
 
+  launchers:
+    name: One-click launcher on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    env:
+      ANIMABOT_NO_START: "1"   # check Python, create .venv, install, verify config; do not start the bot
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Pretend the setup wizard has run
+        shell: bash
+        run: printf 'LLM_API_KEY=ci\nLLM_BASE_URL=https://api.deepseek.com\nLLM_MODEL=deepseek-flash\n' > .env
+      - name: Windows launcher (一键启动机器人.bat)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bat = Get-ChildItem -Filter *.bat | Select-Object -First 1
+          cmd /c "`"$($bat.FullName)`" < NUL"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .venv\Scripts\python.exe -c "import nonebot, openai, PIL; print('dependencies ok')"
+      - name: Linux launcher (start.sh)
+        if: runner.os == 'Linux'
+        run: |
+          ./start.sh
+          .venv/bin/python -c "import nonebot, openai, PIL; print('dependencies ok')"
+      - name: Second run reuses the environment (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bat = Get-ChildItem -Filter *.bat | Select-Object -First 1
+          cmd /c "`"$($bat.FullName)`" < NUL"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Second run reuses the environment (Linux)
+        if: runner.os == 'Linux'
+        run: ./start.sh
+
   docker:
     name: Docker image builds
     runs-on: ubuntu-latest

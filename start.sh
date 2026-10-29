@@ -29,5 +29,6 @@ fi
 
 .venv/bin/python tools/setup_wizard.py --check || .venv/bin/python tools/setup_wizard.py
 
+[ -n "${ANIMABOT_NO_START:-}" ] && { echo "环境检查完成，已按 ANIMABOT_NO_START 跳过启动。"; exit 0; }
 echo "AnimaBot 正在运行，按 Ctrl+C 停止。管理页面令牌：.venv/bin/python tools/manage.py"
 exec .venv/bin/python bot.py
