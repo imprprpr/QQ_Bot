@@ -5,17 +5,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
-from .config import ROOT, LLM_TIMEOUT
+from .config import LLM_TIMEOUT
 from .http_transport import request_json
 
 
 def active_profile():
-    filename = os.getenv('BOT_MODEL_CONFIG_FILE', '').strip()
-    if not filename:
-        return None
-    path = Path(filename)
-    if not path.is_absolute():
-        path = ROOT / path
+    """The profile selected in a management page, or None to use LLM_* from .env."""
+    from .model_store import config_path
+    from .providers import ProviderError, is_loopback
+    path = config_path()
     if not path.exists():
         return None
     try:
@@ -29,9 +27,10 @@ def active_profile():
             return None
         profile = next(p for p in data['profiles'] if p['id'] == identity)
         parsed = urlsplit(profile['base_url'])
-        if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        local = parsed.scheme == 'http' and is_loopback(parsed.hostname)
+        if not (parsed.scheme == 'https' or local) or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError()
-        if not profile['api_key'] or not profile['model']:
+        if not profile['model'] or (not profile.get('api_key') and not local):
             raise ValueError()
         return dict(profile)
     except Exception:
@@ -54,12 +53,13 @@ class ManagedClient:
             payload['temperature'] = temperature
         # Legacy provider-specific options must not leak into a newly selected API.
         async def headers(force=False):
-            return {'Authorization': 'Bearer ' + profile['api_key']}
+            # Local servers (Ollama, LM Studio) need no key.
+            return {'Authorization': 'Bearer ' + profile['api_key']} if profile.get('api_key') else {}
         url = profile['base_url'].rstrip('/') + '/chat/completions'
         data = await request_json(url, payload, headers, timeout=max(1, LLM_TIMEOUT-1),
             attempt_timeout=min(35, LLM_TIMEOUT), max_attempts=2,
             proxy=os.getenv('LLM_PROXY') or None, label='managed-chat',
-            rate_key=url + '\0' + profile['api_key'])
+            rate_key=url + '\0' + profile.get('api_key', ''))
         choices = data.get('choices') or []
         if not choices:
             raise ValueError('EMPTY_MANAGED_RESPONSE')

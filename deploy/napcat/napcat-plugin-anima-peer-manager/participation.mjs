@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import {randomUUID} from 'node:crypto';
-import {atomicWriteJson,conflict,fail,jsonRoute} from './shared.mjs?v=1.8.0';
+import {atomicWriteJson,conflict,fail,jsonRoute} from './shared.mjs?v=1.9.0';
 
 export const fields=JSON.parse(fs.readFileSync(new URL('./participation.schema.json',import.meta.url),'utf8'));
 export const defaults=()=>({schema_version:2,revision:'',values:Object.fromEntries(fields.map(f=>[f.key,f.default]))});

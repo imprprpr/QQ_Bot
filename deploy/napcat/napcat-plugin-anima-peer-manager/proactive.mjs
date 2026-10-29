@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import {randomUUID} from 'node:crypto';
-import {atomicWriteJson,conflict,fail,jsonRoute} from './shared.mjs?v=1.8.0';
+import {atomicWriteJson,conflict,fail,jsonRoute} from './shared.mjs?v=1.9.0';
 
 export const defaults = {schema_version:1, revision:'', enabled:true, utc_offset:8,
   windows:[[480,600],[720,840],[1140,1320]], idle_hours:3, cooldown_hours:6,

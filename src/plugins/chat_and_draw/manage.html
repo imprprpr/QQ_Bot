@@ -81,6 +81,23 @@ td{overflow-wrap:anywhere}
 .event{border-bottom:1px solid var(--line);padding:8px 0}
 .event p{margin:0 0 6px;color:var(--ink)}
 #token{max-width:440px}
+.provider-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.pill{border:1px solid var(--ok);color:var(--ok);border-radius:999px;padding:5px 14px;font-size:13px}
+.profiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:14px}
+.profile-card{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--bg);display:flex;flex-direction:column;gap:6px}
+.profile-card[data-active="true"]{border-color:var(--ok);box-shadow:inset 0 0 0 1px var(--ok)}
+.profile-card h3{margin:0;font-size:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.profile-card .meta{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.profile-card .actions{margin-top:auto;padding-top:6px}
+.profile-card button{padding:5px 11px;font-size:13px}
+.latency{font-size:12px}.latency.good{color:var(--ok)}.latency.bad{color:var(--danger)}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.catalog button{text-align:left;display:flex;flex-direction:column;gap:3px;padding:12px}
+.catalog button small{margin:0}
+.catalog .star{color:var(--ok);font-size:12px}
+#editor-panel{border-top:1px solid var(--line);margin-top:18px;padding-top:6px}
+#test-result{margin:8px 0 0}
 </style></head><body><main>
 <header><h1>AnimaBot 本地管理</h1><p>查看模型调用、生成任务与发送结果，管理每个角色的独立记忆和精选表情。</p></header>
 <section class="panel" aria-labelledby="connect-title">
@@ -90,6 +107,31 @@ td{overflow-wrap:anywhere}
   <p id="config-errors" class="error-text hidden" role="alert"></p>
 </section>
 <div id="workspace" class="hidden">
+<section class="panel" aria-labelledby="providers-title">
+  <div class="provider-head"><h2 id="providers-title" style="margin:0">模型提供商</h2><span class="pill" id="current-model" role="status">读取中…</span></div>
+  <p>像切换线路一样切换聊天模型：添加几个提供商，点「启用」立即生效，无需重启。生图和语音不受影响。</p>
+  <div class="actions"><button id="add-provider" class="primary" type="button">＋ 添加提供商</button><button id="test-all" type="button">测试全部</button></div>
+  <p id="shared-note" class="hidden"><small>这些配置与 NapCat「模型提供商」页面共用同一个文件，两边的修改都会生效。</small></p>
+  <div class="profiles" id="profiles" role="list"></div>
+  <div id="editor-panel" class="hidden">
+    <h3 id="editor-title">选择提供商</h3>
+    <div class="tabs" id="group-tabs" role="tablist"></div>
+    <div class="catalog" id="catalog"></div>
+    <form id="provider-form" class="hidden">
+      <p id="provider-note"></p>
+      <div class="grid">
+        <div><label for="p-name">配置名称</label><input id="p-name" maxlength="80" required></div>
+        <div><label for="p-url">API 地址</label><input id="p-url" autocomplete="off" required aria-describedby="p-url-hint"><small id="p-url-hint">OpenAI 兼容接口的基础地址，一般以 /v1 结尾。</small></div>
+      </div>
+      <div id="p-fields"></div>
+      <div id="p-key-box"><label for="p-key">API Key</label><input id="p-key" type="password" autocomplete="new-password" aria-describedby="p-key-hint"><small id="p-key-hint"></small></div>
+      <div class="row"><div style="flex:1"><label for="p-model">模型</label><input id="p-model" list="p-model-options" maxlength="200" required placeholder="点「获取模型列表」后选择，或直接填写模型 ID"><datalist id="p-model-options"></datalist></div><button id="p-fetch" type="button">获取模型列表</button></div>
+      <small id="p-model-hint">列表里可能有非聊天模型；已为你预选一个推荐的聊天模型。</small>
+      <p id="test-result" role="status"></p>
+      <div class="actions"><button id="p-save-activate" class="primary" type="submit">保存并启用</button><button id="p-save" type="button">仅保存</button><button id="p-test" type="button">测试连接</button><button id="p-cancel" type="button">取消</button></div>
+    </form>
+  </div>
+</section>
 <section class="panel"><h2>运行概览</h2><p id="model"></p><div class="metrics" id="metrics"></div><small>Token 来自接口返回的实际 usage；未估算货币费用。调用失败且服务端未返回用量时，无法补算。</small></section>
 <section class="panel"><h2>最近运行</h2><div class="scroll"><table class="stack"><thead><tr><th>时间</th><th>角色</th><th>状态</th><th>会话</th><th>查看</th></tr></thead><tbody id="runs"></tbody></table></div><pre id="detail" class="hidden" tabindex="0" aria-label="运行详情"></pre></section>
 <section class="panel"><h2>生成任务</h2><p>图片任务后台排队。重发只发送已有文件，不会重新生成，并固定发送到原会话。</p><div class="scroll"><table class="stack"><thead><tr><th>任务 / 时间</th><th>角色</th><th>状态 / 错误</th><th>ComfyUI ID</th><th>操作</th></tr></thead><tbody id="tasks"></tbody></table></div></section>
@@ -294,6 +336,162 @@ let token = '', roles = [], shownRole = '';
 const dirty = dirtyTracker($('dirty'));
 const run = runner();
 
+// ---- Model providers (cc-switch style: saved profiles, one click to switch) ----
+let providers = {catalog: {groups: [], providers: []}, profiles: [], active: null, revision: ''};
+let editing = null, chosen = null, group = 'china';
+const latency = {};
+const entryOf = id => providers.catalog.providers.find(p => p.id === id);
+function host(url) { try { return new URL(url).host; } catch { return url; } }
+function el(tag, props = {}, ...children) { const e = Object.assign(document.createElement(tag), props); e.append(...children); return e; }
+function renderProviders() {
+  const active = providers.profiles.find(p => p.id === providers.active);
+  const env = providers.env_default;
+  $('current-model').textContent = active ? '正在使用：' + active.name + ' · ' + active.model
+    : env.configured ? '正在使用：.env 默认 · ' + env.model : '尚未配置模型，请添加提供商';
+  $('shared-note').classList.toggle('hidden', !providers.shared_with_napcat);
+  const cards = providers.profiles.map(p => {
+    const entry = entryOf(p.provider);
+    const isActive = p.id === providers.active;
+    const result = latency[p.id];
+    const card = el('div', {className: 'profile-card'});
+    card.dataset.active = String(isActive);
+    card.setAttribute('role', 'listitem');
+    const title = el('h3', {}, p.name);
+    if (isActive) title.append(el('span', {className: 'badge', textContent: '使用中'}));
+    card.append(title, el('div', {className: 'meta', textContent: (entry ? entry.name + ' · ' : '') + p.model}),
+      el('div', {className: 'meta', textContent: host(p.base_url)}));
+    if (result) card.append(el('div', {className: 'latency ' + (result.ok ? 'good' : 'bad'), textContent: result.ok ? '✓ ' + result.latency_ms + ' ms' : '✗ ' + result.error}));
+    const actions = el('div', {className: 'actions'});
+    if (!isActive) action(actions, '启用', () => activate(p.id), 'primary');
+    action(actions, '测试', () => testProfile(p));
+    actions.append(el('button', {type: 'button', textContent: '编辑', onclick: () => openEditor(p)}));
+    if (!isActive) action(actions, '删除', async () => {
+      if (!confirm('删除「' + p.name + '」及保存的密钥？')) return;
+      await mutateProviders('delete', {id: p.id}); ok('已删除。');
+    }, 'danger');
+    card.append(actions);
+    return card;
+  });
+  if (env.configured) {
+    const card = el('div', {className: 'profile-card'});
+    card.dataset.active = String(!active);
+    card.setAttribute('role', 'listitem');
+    const title = el('h3', {}, '部署默认（.env）');
+    if (!active) title.append(el('span', {className: 'badge', textContent: '使用中'}));
+    card.append(title, el('div', {className: 'meta', textContent: env.model}), el('div', {className: 'meta', textContent: env.host}));
+    const actions = el('div', {className: 'actions'});
+    if (active) action(actions, '启用', () => activate(null), 'primary');
+    card.append(actions);
+    cards.push(card);
+  }
+  if (!cards.length) cards.push(el('p', {textContent: '还没有可用的模型。点「添加提供商」，三步完成：选提供商 → 粘贴 API Key → 选模型。'}));
+  $('profiles').replaceChildren(...cards);
+}
+async function loadProviders() { providers = await api('/providers'); renderProviders(); }
+async function mutateProviders(operation, body) {
+  try { providers = {...providers, ...await api('/providers/' + operation, {method: 'POST', body: {...body, revision: providers.revision}})}; }
+  catch (err) { if (err.status === 409) await loadProviders(); throw err; }
+  renderProviders();
+  return providers.saved_id;
+}
+async function activate(id) {
+  await mutateProviders('activate', {id});
+  ok(id ? '已切换，下一条消息开始使用「' + providers.profiles.find(p => p.id === id).name + '」。' : '已切换回 .env 默认配置。');
+}
+async function testProfile(p) {
+  latency[p.id] = await api('/providers/test', {method: 'POST', body: {id: p.id, base_url: p.base_url, model: p.model}});
+  renderProviders();
+}
+function renderCatalog() {
+  $('group-tabs').replaceChildren(...providers.catalog.groups.map(g => {
+    const b = el('button', {type: 'button', textContent: g.name, onclick: () => { group = g.id; renderCatalog(); }});
+    b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(g.id === group)); b.setAttribute('aria-pressed', String(g.id === group));
+    return b;
+  }));
+  $('catalog').replaceChildren(...providers.catalog.providers.filter(p => p.group === group).map(p => {
+    const b = el('button', {type: 'button', onclick: () => chooseProvider(p)});
+    const name = el('strong', {textContent: p.name});
+    if (p.recommended) name.append(el('span', {className: 'star', textContent: ' ★ 推荐'}));
+    b.append(name, el('small', {textContent: p.badge || ''}));
+    if (chosen?.id === p.id) b.setAttribute('aria-pressed', 'true');
+    return b;
+  }));
+}
+function chooseProvider(p, profile = null) {
+  chosen = p;
+  renderCatalog();
+  $('provider-form').classList.remove('hidden');
+  $('p-name').value = profile?.name || p.name;
+  $('p-url').value = profile?.base_url || p.base_url;
+  $('p-url').readOnly = !!p.fields && !profile;
+  $('p-fields').replaceChildren(...(profile ? [] : (p.fields || [])).map(f => {
+    const input = el('input', {id: 'field-' + f.key, required: true, placeholder: f.hint || ''});
+    input.dataset.key = f.key;
+    input.oninput = () => { $('p-url').value = p.base_url.replace('{' + f.key + '}', input.value.trim() || '{' + f.key + '}'); };
+    return el('div', {}, el('label', {htmlFor: input.id, textContent: f.label}), input, el('small', {textContent: f.hint || ''}));
+  }));
+  const keyless = p.needs_key === false;
+  $('p-key-box').classList.toggle('hidden', keyless);
+  $('p-key').value = '';
+  $('p-key').required = !keyless && !profile?.has_key;
+  $('p-key-hint').replaceChildren();
+  if (profile?.has_key) $('p-key-hint').append('已保存密钥；留空表示继续使用。');
+  if (p.key_url) $('p-key-hint').append(el('a', {href: p.key_url, target: '_blank', rel: 'noopener', textContent: (profile?.has_key ? ' ' : '') + (keyless ? '下载 / 说明 ↗' : '去这里获取 API Key ↗')}));
+  $('provider-note').textContent = [p.note, p.needs_proxy ? '这是海外服务：在国内通常需要在 .env 中设置 LLM_PROXY 代理。' : ''].filter(Boolean).join(' ');
+  $('p-model').value = profile?.model || '';
+  $('p-model-options').replaceChildren();
+  $('test-result').textContent = '';
+  (profile ? $('p-model') : keyless ? $('p-fetch') : $('p-key')).focus();
+}
+function openEditor(profile = null) {
+  editing = profile;
+  $('editor-panel').classList.remove('hidden');
+  $('editor-title').textContent = profile ? '编辑「' + profile.name + '」' : '选择提供商';
+  const entry = profile ? entryOf(profile.provider) || entryOf('custom') : null;
+  group = entry?.group || 'china';
+  chosen = null;
+  $('provider-form').classList.add('hidden');
+  renderCatalog();
+  if (entry) chooseProvider(entry, profile);
+  $('editor-panel').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+function draft() {
+  const fields = Object.fromEntries([...$('p-fields').querySelectorAll('input')].map(i => [i.dataset.key, i.value.trim()]));
+  return {id: editing?.id || null, provider: chosen?.id || 'custom', name: $('p-name').value.trim(),
+    base_url: chosen?.fields && !editing ? chosen.base_url : $('p-url').value.trim(), fields,
+    api_key: $('p-key').value.trim(), model: $('p-model').value.trim()};
+}
+async function saveProvider(activate) {
+  const id = await mutateProviders('save', {...draft(), activate});
+  latency[id] = undefined;
+  $('editor-panel').classList.add('hidden');
+  editing = null;
+  ok(activate ? '已保存并启用，下一条消息开始使用。' : '已保存。需要时点「启用」切换。');
+}
+$('add-provider').onclick = () => openEditor();
+$('p-cancel').onclick = () => { $('editor-panel').classList.add('hidden'); editing = null; };
+$('p-fetch').onclick = () => run(async () => {
+  $('test-result').textContent = '正在获取模型列表…';
+  const result = await api('/providers/models', {method: 'POST', body: draft()});
+  $('p-model-options').replaceChildren(...result.models.map(id => el('option', {value: id})));
+  if (result.suggested && !$('p-model').value) $('p-model').value = result.suggested;
+  $('test-result').textContent = '共 ' + result.models.length + ' 个模型' + (result.suggested ? '，已预选推荐模型 ' + result.suggested : '') + '。点模型输入框可从列表选择。';
+});
+$('p-test').onclick = () => run(async () => {
+  $('test-result').textContent = '正在发送一条测试消息…';
+  const result = await api('/providers/test', {method: 'POST', body: draft()});
+  $('test-result').textContent = result.ok ? '✓ 连接成功，用时 ' + result.latency_ms + ' ms，模型回复：' + (result.reply || '（空）') : '✗ ' + result.error;
+  $('test-result').className = result.ok ? '' : 'error-text';
+});
+$('provider-form').onsubmit = e => { e.preventDefault(); run(() => saveProvider(true)); };
+$('p-save').onclick = () => { if ($('provider-form').reportValidity()) run(() => saveProvider(false)); };
+$('test-all').onclick = () => run(async () => {
+  if (!providers.profiles.length) throw new Error('还没有保存的提供商。');
+  await Promise.all(providers.profiles.map(p => api('/providers/test', {method: 'POST', body: {id: p.id, base_url: p.base_url, model: p.model}})
+    .then(r => { latency[p.id] = r; }, e => { latency[p.id] = {ok: false, error: e.message}; })));
+  renderProviders();
+});
+
 function failure(response, data) {
   if (response.status === 401) return new ApiError('令牌无效或已更换，请重新输入管理令牌。', 401);
   if (response.status === 403) return new ApiError(data?.detail || '仅允许在运行 Bot 的这台电脑上访问。', 403);
@@ -334,6 +532,7 @@ async function refresh() {
   if (!token) throw new Error('请先输入管理令牌');
   const data = await api('/overview');
   $('workspace').classList.remove('hidden');
+  await loadProviders();
   $('model').textContent = (data.provider || '') + ' / ' + (data.model || '');
   $('metrics').replaceChildren(...[['模型调用', data.usage.calls], ['输入 token', data.usage.input_tokens], ['输出 token', data.usage.output_tokens], ['总 token', data.usage.total_tokens]].map(([name, value]) => {
     const box = document.createElement('div'), strong = document.createElement('strong');

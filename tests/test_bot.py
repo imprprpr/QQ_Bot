@@ -26,7 +26,8 @@ plugin = importlib.import_module("src.plugins.chat_and_draw").app
 # Offline tests must never select an operator's private deployment adapter.
 os.environ["LLM_CLIENT_FACTORY"] = ""
 os.environ["BOT_INTERACTION_CONFIG_FILE"] = ""  # Offline fixtures never read deployment peer lists.
-os.environ["BOT_MODEL_CONFIG_FILE"] = ""
+# Never read the operator's saved model profiles (data/models.json) during tests.
+os.environ["BOT_MODEL_CONFIG_FILE"] = os.path.join(tempfile.gettempdir(), "animabot-tests-no-models-" + str(os.getpid()) + ".json")
 os.environ["BOT_PROACTIVE_CONFIG_FILE"] = ""
 os.environ["BOT_PARTICIPATION_CONFIG_FILE"] = ""
 os.environ["BOT_PERSONA_CONFIG_FILE"] = ""

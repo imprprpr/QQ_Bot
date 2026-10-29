@@ -3,15 +3,33 @@ import https from 'node:https';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import { randomUUID } from 'node:crypto';
-import {UserError,atomicWriteJson,conflict,fail,jsonRoute} from './shared.mjs?v=1.8.0';
+import {UserError,atomicWriteJson,conflict,fail,jsonRoute} from './shared.mjs?v=1.9.0';
 
-export const presets = [
-  {id:'custom', name:'自定义兼容 API', base_url:''},
-  {id:'deepseek', name:'DeepSeek', base_url:'https://api.deepseek.com/v1'},
-  {id:'siliconflow', name:'硅基流动', base_url:'https://api.siliconflow.cn/v1'},
-  {id:'openrouter', name:'OpenRouter', base_url:'https://openrouter.ai/api/v1'},
-  {id:'gemini', name:'Gemini API（兼容接口）', base_url:'https://generativelanguage.googleapis.com/v1beta/openai'},
-];
+// Provider catalog shared with the bot (copied from src/plugins/chat_and_draw/providers.json by build-ui.mjs).
+// NapCat only reaches public HTTPS services, so local-model presets are left to the bot's own admin page.
+function loadPresets() {
+  try {
+    const data = JSON.parse(fs.readFileSync(new URL('./providers.json', import.meta.url), 'utf8'));
+    return data.providers.filter(p => !p.local).map(({id, name, group, badge, base_url, key_url, note, needs_proxy, fields, model_hints, recommended}) =>
+      ({id, name, group, badge, base_url, key_url, note, needs_proxy, fields, model_hints, recommended}));
+  } catch {
+    return [{id: 'custom', name: '自定义兼容 API', base_url: '', model_hints: []}];
+  }
+}
+export const presets = loadPresets();
+const NOT_CHAT = /embed|rerank|whisper|tts|audio|speech|image|dall-e|moderation|ocr|vl-|-vl|vision-exp|transcri/i;
+const naturalKey = text => text.toLowerCase().split(/(\d+)/).map(part => /^\d+$/.test(part) ? part.padStart(12, '0') : part).join('');
+// Same rules as providers.suggest_model on the bot side: catalog hints against the live list.
+export function suggestModel(entry, ids) {
+  const chat = ids.filter(id => !NOT_CHAT.test(id));
+  const hints = entry?.model_hints || [];
+  for (const hint of hints) if (chat.includes(hint)) return hint;
+  for (const hint of hints) {
+    const matches = chat.filter(id => id.toLowerCase().includes(hint.toLowerCase()) && !/preview|exp|beta/i.test(id));
+    if (matches.length) return matches.reduce((a, b) => naturalKey(b) > naturalKey(a) ? b : a);
+  }
+  return chat.length === 1 ? chat[0] : null;
+}
 export function baseUrl(value) {
   let url;
   try { url = new URL(String(value)); } catch { fail('请填写完整的 HTTPS API 基址'); }
@@ -47,7 +65,7 @@ function profileInput(data,input) {
   const model=String(input.model||'').trim();
   const api_key=String(input.api_key||'').trim() || (previous?.base_url === base_url ? previous.api_key : '');
   if (!name || name.length>80 || model.length>200 || /[\x00-\x1f]/.test(name+model) || !api_key || api_key.length>4096 || /\s/.test(api_key)) fail('请填写名称、有效 API Key 和模型；更换地址时需要重新输入密钥');
-  return {id:previous?.id || randomUUID(),name,base_url,api_key,model};
+  return {id:previous?.id || randomUUID(),name,provider:String(input.provider||previous?.provider||'custom').slice(0,40),base_url,api_key,model};
 }
 export function mutateModels(file,input,operation) {
   const data=readModels(file);
@@ -107,6 +125,6 @@ export function registerModels(ctx) {
   // Use NapCat's authenticated routes, never expose provider secrets as static files.
   ctx.router.get('/models/config',handler(()=>({...publicModels(readModels(file)),presets})));
   for(const op of ['save','activate','delete']) ctx.router.post('/models/'+op,handler(input=>mutateModels(file,input,op)));
-  ctx.router.post('/models/list',handler(input=>listModels(file,input),'无法连接提供商或请求超时，请检查地址和线路'));
+  ctx.router.post('/models/list',handler(async input=>{const models=await listModels(file,input);return {models,suggested:suggestModel(presets.find(p=>p.id===input.provider),models)};},'无法连接提供商或请求超时，请检查地址和线路'));
   ctx.router.page({path:'models',title:'AnimaBot 模型提供商',htmlFile:'models.html',icon:'🔌',description:'配置 API、拉取模型与切换聊天模型'});
 }

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import {randomUUID} from 'node:crypto';
-import {atomicWriteJson,conflict,fail,jsonRoute} from './shared.mjs?v=1.8.0';
-import {readStatus} from './monitor.mjs?v=1.8.0';
+import {atomicWriteJson,conflict,fail,jsonRoute} from './shared.mjs?v=1.9.0';
+import {readStatus} from './monitor.mjs?v=1.9.0';
 
 export const textFields={name:80,description:6000,personality:6000,scenario:3000,first_mes:1000,mes_example:8000,system_prompt:6000};
 export function normalizeStyle(value){

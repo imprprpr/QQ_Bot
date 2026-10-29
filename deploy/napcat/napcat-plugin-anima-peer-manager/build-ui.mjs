@@ -13,6 +13,12 @@ const shared = {
   js: fs.readFileSync(new URL('ui/base.js', here), 'utf8').trim(),
 };
 
+// The provider catalog lives with the bot; the plugin ships a copy so it works when deployed alone.
+export const catalog = {
+  source: fileURLToPath(new URL('../../../src/plugins/chat_and_draw/providers.json', here)),
+  copy: fileURLToPath(new URL('providers.json', here)),
+};
+
 export function render(html) {
   const style = /(<style data-shared="base\.css">)[\s\S]*?(<\/style>)/;
   const script = /(<script data-shared="base\.js">)[\s\S]*?(<\/script>)/;
@@ -29,6 +35,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === fs.realpathSync(proces
     const next = render(html);
     if (next === html) continue;
     if (check) { stale++; console.error('out of date:', page); } else { fs.writeFileSync(page, next); console.log('updated', page); }
+  }
+  const source = fs.readFileSync(catalog.source, 'utf8');
+  const copy = fs.existsSync(catalog.copy) ? fs.readFileSync(catalog.copy, 'utf8') : '';
+  if (source !== copy) {
+    if (check) { stale++; console.error('out of date:', catalog.copy); } else { fs.writeFileSync(catalog.copy, source); console.log('updated', catalog.copy); }
   }
   if (stale) process.exit(1);
 }

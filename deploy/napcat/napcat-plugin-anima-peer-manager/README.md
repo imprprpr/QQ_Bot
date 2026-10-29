@@ -143,3 +143,9 @@ python tools/seed_participation_config.py --output /宿主机/NapCat/config/plug
 - 窄屏下状态表格改为卡片排列，操作按钮固定在屏幕底部。
 
 服务端各路由共用 `shared.mjs` 中的处理函数与原子写入：同源检查、no-store、错误分类（400 参数、409 冲突、503 Bot 离线）一致；写入失败不会再被临时文件清理掩盖。群号配置文件损坏时插件仍能加载其他页面，并在日志中提示修复。
+
+## 提供商目录（1.9.0）
+
+模型提供商页面改用 Bot 与配置向导共用的提供商目录（`providers.json`，由 `node build-ui.mjs` 从 `src/plugins/chat_and_draw/providers.json` 复制）：按国内直连、海外、聚合平台分组，标注推荐项、需要代理的服务和获取 API Key 的链接。拉取模型列表后会根据目录中的提示自动预选一个聊天模型；阿里云百炼等需要额外参数的地址会提示替换占位符。本机模型（Ollama、LM Studio）只能在 Bot 自带的本机管理页添加，因为 NapCat 页面只允许连接公网 HTTPS 服务。
+
+升级时请复制整个插件文件夹（包含新增的 `providers.json`）并重启 NapCat。

@@ -1,6 +1,6 @@
 {
   "name": "napcat-plugin-anima-peer-manager",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "AnimaBot 群号、模型、人设分配、主动聊天与群聊参与管理",
   "main": "index.mjs",
   "type": "module",

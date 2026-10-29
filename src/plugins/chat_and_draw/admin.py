@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import hmac
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -19,6 +20,7 @@ from .sticker_library import library
 from . import config_errors
 from .memory import EventMemoryStore
 from .qq_text import contains_cq_code
+from .provider_admin import register_provider_routes
 
 
 def admin_token(store):
@@ -40,9 +42,24 @@ def admin_token(store):
     return token
 
 
+def trusted_client(host):
+    """Loopback always. In Docker the host's browser arrives from the bridge gateway (a private
+    address), so BOT_ADMIN_ALLOW_PRIVATE=true also admits private addresses. docker-compose.yml
+    publishes the port on 127.0.0.1 only, and the admin token is still required."""
+    if host in {"127.0.0.1", "::1", "localhost"}:
+        return True
+    if os.getenv("BOT_ADMIN_ALLOW_PRIVATE", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return False
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_private and not address.is_link_local
+
+
 def local_only(request):
     allowed = {"127.0.0.1", "::1", "localhost"}
-    if not request.client or request.client.host not in allowed or request.url.hostname not in allowed:
+    if not request.client or not trusted_client(request.client.host) or request.url.hostname not in allowed:
         raise HTTPException(403, "仅允许本机访问")
     origin = request.headers.get("origin")
     if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
@@ -64,6 +81,18 @@ async def read_json(request, limit=8 * 1024 * 1024):
     return value
 
 
+def current_model():
+    """Which model the next chat request will use, for the overview line."""
+    from .model_provider import active_profile
+    try:
+        profile = active_profile()
+    except ValueError:
+        return {"provider": "模型配置文件损坏", "model": "请在模型提供商中重新保存"}
+    if profile:
+        return {"provider": profile.get("name", "已保存配置"), "model": profile["model"]}
+    return {"provider": ".env 默认配置", "model": os.getenv("LLM_MODEL", "deepseek-flash")}
+
+
 def register_admin(app, get_store):
     async def guard(request):
         local_only(request)
@@ -71,6 +100,8 @@ def register_admin(app, get_store):
         supplied = request.headers.get("authorization", "")
         if not hmac.compare_digest(supplied.encode("utf-8"), ("Bearer " + expected).encode("utf-8")):
             raise HTTPException(401, "请输入本机管理令牌")
+
+    register_provider_routes(app, guard, read_json)
 
     @app.get("/manage", response_class=HTMLResponse, include_in_schema=False)
     async def page(request: Request):
@@ -123,8 +154,7 @@ def register_admin(app, get_store):
                         totals[name] += value
             return totals
         return {"runs": runs, "tasks": tasks, "roles": await asyncio.to_thread(roles),
-                "usage": await runtime.call(usage), "provider": "openai-compatible",
-                "model": os.getenv("LLM_MODEL", "deepseek-chat"),
+                "usage": await runtime.call(usage), **current_model(),
                 "config_errors": config_errors.current()}
 
     @app.get("/manage/api/runs/{identity}", include_in_schema=False)

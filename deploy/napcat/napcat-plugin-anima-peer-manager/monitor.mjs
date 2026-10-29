@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import http from 'node:http';
-import {jsonRoute} from './shared.mjs?v=1.8.0';
+import {jsonRoute} from './shared.mjs?v=1.9.0';
 
 export async function readStatus(file,transport=http.get,kind='participation') {
   const routes={participation:'/manage/api/participation',proactive:'/manage/api/proactive',personas:'/manage/api/persona-catalog'};

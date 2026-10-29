@@ -77,7 +77,11 @@ header{display:flex;justify-content:space-between;gap:16px;align-items:center;ma
 .pill{border:1px solid var(--ok);color:var(--ok);border-radius:999px;padding:8px 16px;font-size:13px}
 .layout{display:grid;grid-template-columns:270px 1fr;gap:var(--gap);align-items:start}
 .layout .panel{margin:0}
-.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0 18px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:12px 0 18px}
+.cards button{text-align:left;display:flex;flex-direction:column;gap:3px}
+.cards button small{margin:0}
+.star{color:var(--ok);font-size:12px}
+#provider-note:empty{display:none}
 .profile{display:block;width:100%;text-align:left;margin-bottom:10px;overflow-wrap:anywhere}
 .profile small{margin-top:4px}
 .model-row{display:flex;gap:10px;align-items:end}.model-row>div{flex:1}
@@ -95,6 +99,7 @@ header{display:flex;justify-content:space-between;gap:16px;align-items:center;ma
   <h2 id="editor-title">预设提供商</h2>
   <label for="search" class="sr-only">搜索提供商</label><input id="search" type="search" placeholder="搜索提供商…">
   <div class="cards" id="presets"></div>
+  <p id="provider-note"></p>
   <form id="editor">
     <label for="name">配置名称</label><input id="name" maxlength="80" placeholder="例如：日常聊天备用">
     <label for="url">API 基址</label><input id="url" placeholder="https://api.example.com/v1" autocomplete="off" aria-describedby="urlhint"><small id="urlhint">支持 OpenAI Chat Completions 兼容接口。其他协议及订阅登录不适用。</small>
@@ -290,7 +295,7 @@ window.AB = (() => {
 'use strict';
 const {$, napcat, ok, error, runner, toast, dirtyTracker} = AB;
 const api = napcat('/api/Plugin/ext/napcat-plugin-anima-peer-manager/models/');
-let state = {profiles: [], presets: [], revision: '', active: null}, selected = null;
+let state = {profiles: [], presets: [], revision: '', active: null}, selected = null, providerId = 'custom';
 const dirty = dirtyTracker($('dirty'));
 const run = runner({onError: err => { if ($('active').textContent === '正在读取配置…') $('active').textContent = '尚未连接'; error(err, reload); }});
 
@@ -316,12 +321,21 @@ function render() {
     return b;
   }));
   const q = $('search').value.trim().toLowerCase();
-  $('presets').replaceChildren(...state.presets.filter(p => p.name.toLowerCase().includes(q)).map(p =>
-    button(p.name, () => usePreset(p))));
+  $('presets').replaceChildren(...state.presets.filter(p => (p.name + (p.badge || '')).toLowerCase().includes(q)).map(p => {
+    const b = button('', () => usePreset(p));
+    const name = document.createElement('strong'); name.textContent = p.name;
+    if (p.recommended) { const star = document.createElement('span'); star.className = 'star'; star.textContent = ' ★ 推荐'; name.append(star); }
+    const badge = document.createElement('small'); badge.textContent = p.badge || '';
+    b.replaceChildren(name, badge);
+    if (p.id === providerId) b.setAttribute('aria-pressed', 'true');
+    return b;
+  }));
   syncButtons();
 }
 function fill(p) {
   selected = p?.id || null;
+  providerId = p?.provider || 'custom';
+  $('provider-note').textContent = '';
   for (const [id, k] of [['name', 'name'], ['url', 'base_url'], ['model', 'model']]) $(id).value = p?.[k] || '';
   $('key').value = '';
   $('keyhint').textContent = p?.has_key ? '已保存密钥；留空保留。更换 API 地址时必须重新填写密钥。' : '密钥只保存在服务器私有文件，不在页面回显。';
@@ -333,11 +347,20 @@ function fill(p) {
 function choose(p) { if (dirty.confirmDiscard('表单中有未保存的修改（可能包括刚输入的密钥），切换后会丢失。确定继续吗？')) fill(p); }
 function usePreset(p) {
   if (!dirty.confirmDiscard('表单中有未保存的修改（可能包括刚输入的密钥），使用预设会覆盖它们。确定继续吗？')) return;
-  fill(null); $('name').value = p.name; $('url').value = p.base_url; dirty.mark();
-  $('key').focus();
-  toast('已填入 ' + p.name + ' 的地址，请输入密钥并拉取模型。');
+  fill(null); providerId = p.id; $('name').value = p.name; $('url').value = p.base_url; dirty.mark();
+  $('keyhint').replaceChildren(document.createTextNode('密钥只保存在服务器私有文件，不在页面回显。'));
+  if (p.key_url) {
+    const link = document.createElement('a');
+    Object.assign(link, {href: p.key_url, target: '_blank', rel: 'noopener', textContent: ' 去这里获取 API Key ↗'});
+    $('keyhint').append(link);
+  }
+  $('provider-note').textContent = [p.note, p.needs_proxy ? '这是海外服务：在国内通常需要为 Bot 设置 LLM_PROXY 代理。' : '',
+    p.fields ? '请把地址中的 ' + p.fields.map(f => '{' + f.key + '}').join('、') + ' 替换为你的' + p.fields.map(f => f.label).join('、') + '（' + p.fields.map(f => f.hint).join('；') + '）。' : ''].filter(Boolean).join(' ');
+  render();
+  (p.fields ? $('url') : $('key')).focus();
+  toast('已填入 ' + p.name + ' 的地址：粘贴 API Key 后点「拉取模型列表」，会自动预选推荐模型。');
 }
-const draft = () => ({id: selected, revision: state.revision, name: $('name').value, base_url: $('url').value, api_key: $('key').value, model: $('model').value});
+const draft = () => ({id: selected, provider: providerId, revision: state.revision, name: $('name').value, base_url: $('url').value, api_key: $('key').value, model: $('model').value});
 async function refresh() { state = await api('config'); render(); }
 function reload() {
   if (!dirty.confirmDiscard('重新读取会丢弃表单中尚未保存的修改。确定继续吗？')) return;
@@ -359,10 +382,10 @@ $('editor').onsubmit = e => { e.preventDefault(); run(() => save(true)).then(syn
 $('save').onclick = () => run(() => save(false)).then(syncButtons);
 $('fetch').onclick = () => run(async () => {
   toast('正在从提供商拉取模型…');
-  const models = await api('list', draft());
+  const {models, suggested} = await api('list', draft());
   $('model-options').replaceChildren(...models.map(id => { const o = document.createElement('option'); o.value = id; return o; }));
-  if (!$('model').value && models.length === 1) { $('model').value = models[0]; dirty.mark(); }
-  ok('已获取 ' + models.length + ' 个模型，点击模型输入框选择或输入搜索。');
+  if (!$('model').value && suggested) { $('model').value = suggested; dirty.mark(); }
+  ok('已获取 ' + models.length + ' 个模型' + (suggested ? '，已预选推荐模型 ' + suggested : '') + '。点击模型输入框可从列表选择。');
 }).then(syncButtons);
 $('activate').onclick = () => run(async () => {
   if (!selected) throw new Error('请先在左侧选择已保存的配置。');
