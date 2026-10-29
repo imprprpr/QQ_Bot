@@ -26,6 +26,17 @@ plugin = importlib.import_module("src.plugins.chat_and_draw").app
 # Offline tests must never select an operator's private deployment adapter.
 os.environ["LLM_CLIENT_FACTORY"] = ""
 os.environ["BOT_INTERACTION_CONFIG_FILE"] = ""  # Offline fixtures never read deployment peer lists.
+# Windows cannot delete a SQLite file while any handle is open. A few fixtures leave a
+# connection to the garbage collector; collect before temp folders are removed.
+if os.name == "nt":
+    import gc
+    _temporary_cleanup = tempfile.TemporaryDirectory.cleanup
+
+    def _cleanup_after_collect(self):
+        gc.collect()
+        _temporary_cleanup(self)
+
+    tempfile.TemporaryDirectory.cleanup = _cleanup_after_collect
 # Never read the operator's saved model profiles (data/models.json) during tests.
 os.environ["BOT_MODEL_CONFIG_FILE"] = os.path.join(tempfile.gettempdir(), "animabot-tests-no-models-" + str(os.getpid()) + ".json")
 os.environ["BOT_PROACTIVE_CONFIG_FILE"] = ""

@@ -17,8 +17,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         python: ["3.10", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -36,8 +36,8 @@ jobs:
       run:
         working-directory: deploy/napcat/napcat-plugin-anima-peer-manager
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: node build-ui.mjs --check
@@ -47,7 +47,7 @@ jobs:
     name: Docker image builds
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: docker build -t animabot:ci .
       - name: Image starts and the setup wizard runs
         run: |
