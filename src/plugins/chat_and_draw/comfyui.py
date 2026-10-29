@@ -26,7 +26,7 @@ def build_workflow(dynamic_tags):
         if nid in workflow and "wildcard_text" in workflow[nid].get("inputs", {}):
             matched = True
             # Quality/style tags are configurable per deployment.
-            base_quality_tags = os.getenv("DRAW_BASE_TAGS", "newest, masterpiece, best quality, score_7, score_8_up, score_9, @piromizu")
+            base_quality_tags = os.getenv("DRAW_BASE_TAGS", "masterpiece, best quality")
             new_text = f"{base_quality_tags}, {dynamic_tags}"
             workflow[nid]["inputs"]["wildcard_text"] = new_text
             workflow[nid]["inputs"]["populated_text"] = new_text

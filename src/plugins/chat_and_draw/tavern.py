@@ -32,6 +32,10 @@ class TavernCard:
         self.system_prompt: str = c_data.get("system_prompt", "")
         self.reply_style = normalize(c_data.get('reply_style'))
         self.image_profile = c_data.get('image_profile')
+        # Stable appearance tags for drawing (e.g. "1boy, short black hair, glasses").
+        # Read from `draw_tags` or SillyTavern-style `extensions.anima.draw_tags`.
+        tags = c_data.get('draw_tags') or ((c_data.get('extensions') or {}).get('anima') or {}).get('draw_tags') or ''
+        self.draw_tags: str = ', '.join(tags) if isinstance(tags, list) else str(tags).strip()
 
         # 世界书 (Lorebook / World Info)
         self.character_book: Optional[Dict[str, Any]] = c_data.get("character_book", None)
@@ -239,6 +243,9 @@ class TavernManager:
             lore_cleaned = [replace_macros(e) for e in lore_entries]
             lore_section = "\n【世界观与背景知识 (World Info)】\n" + "\n".join(f"- {e}" for e in lore_cleaned) + "\n"
 
+        appearance = replace_macros(card.draw_tags)
+        appearance_line = f"   - 你的固定外貌标签：{appearance}（拍自己时始终包含，除非用户明确要求修改）\n" if appearance else ""
+        draw_example = (appearance + ", " if appearance else "solo, ") + "gentle smile, looking at viewer, casual clothes"
         tavern_prompt = f"""你是 {char_name}。请完全沉浸于该角色的性格与设定中，以第一人称与用户聊天。
 
 【角色人设 (Character Description)】
@@ -254,14 +261,14 @@ class TavernManager:
 
 【核心强制功能指令（最高优先级）】
 1. **生图指令**：当用户要求你：发自拍、看照片、换衣服、看全身照、发插画等，你**必须**在回复文字的末尾输出隐藏英文生图标签：<draw: 英文标签1, 英文标签2, ...>
-   - 必须结合你当前的人设外貌和服装特征输出符合 Danbooru 风格的英文 Tag。
-   - 示例：<draw: 1girl, solo, cute, gentle smile, looking at viewer, casual clothes>
+   - 必须结合你当前的人设外貌和服装特征输出符合 Danbooru 风格的英文 Tag，主体标签（如 1girl、1boy、1other）按角色实际设定选择。
+{appearance_line}   - 示例：<draw: {draw_example}>
 2. **发送语音指令**：当用户要求你发语音（例如“发语音”、“说句话”），或者当前语境非常适合语音表达时，你**必须**在回复结尾附带标签：<voice>
 3. **表情包指令**：如果你想发送表情包，在末尾附带：<sticker: 分类名> (分类仅限 cry, pout, smug, facepalm, laugh, happy, stare, think, shrug, shy；例如 <sticker: shy>)
 
 【回复示例】
 用户：发张自拍看看嘛
-{char_name}：好，给你看看。<draw: 1girl, solo, beautiful, gentle smile, looking at viewer, casual clothes>
+{char_name}：好，给你看看。<draw: {draw_example}>
 
 用户：给我发条语音听听嘛
 {char_name}：好，这次用语音。<voice>

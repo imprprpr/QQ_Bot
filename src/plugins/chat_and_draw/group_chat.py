@@ -14,6 +14,13 @@ from .database import database
 from .participation_status import DecisionLog
 
 
+def default_nickname():
+    """Without GROUP_CHAT_NICKNAMES, calling the default character by name counts as a nickname."""
+    from .tavern import tavern_manager
+    card = tavern_manager.get_active_card()
+    return card.name if card else ''
+
+
 def number(name, default, minimum=0):
     from .participation_config import override
     value = override(name)
@@ -130,7 +137,7 @@ class GroupChat:
             await skipped('ambient','not_addressed')
             return None
         aliases = [unicodedata.normalize('NFKC', value.strip()) for value in
-                   os.getenv('GROUP_CHAT_NICKNAMES', '小灯,玲').split(',') if value.strip()]
+                   (os.getenv('GROUP_CHAT_NICKNAMES', '').strip() or default_nickname()).split(',') if value.strip()]
         named = any((re.search(r'(?<!\w)' + re.escape(alias) + r'(?!\w)', text, re.I)
                      if alias.isascii() else alias in text) for alias in aliases)
         now = time.time()

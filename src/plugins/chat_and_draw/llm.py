@@ -26,7 +26,7 @@ from .incoming_images import normalize_image
 from .local_client import local_client
 from .config import feature_enabled
 
-MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
+MODEL = os.getenv("LLM_MODEL", "deepseek-flash")
 
 # Create clients lazily: an unconfigured optional vision service must not stop startup.
 _clients = {}
